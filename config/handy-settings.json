@@ -70,7 +70,7 @@
       "anthropic": "",
       "bedrock_mantle": "",
       "cerebras": "",
-      "custom": "hf.co/jc-builds/Qwen3.5-9B-Q4_K_M-GGUF:Q4_K_M",
+      "custom": "gemma4:e4b",
       "groq": "",
       "openai": "",
       "openrouter": "",
