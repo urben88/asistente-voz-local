@@ -11,6 +11,8 @@ Dictado por voz con IA **100% local** para Windows: hablas y obtienes transcripc
 
 `Esc` cancela una grabación en curso.
 
+**El texto generado (dictado o asistente) queda siempre copiado en el portapapeles**, además de pegarse donde tengas el cursor (`Ctrl+V` para reutilizarlo).
+
 ## Componentes (todo local)
 
 | Pieza | Función | Modelo |

@@ -33,7 +33,7 @@
     },
     "chinese_script": "as_transcribed",
     "clamshell_microphone": null,
-    "clipboard_handling": "dont_modify",
+    "clipboard_handling": "copy_to_clipboard",
     "custom_filler_words": null,
     "custom_words": [],
     "debug_mode": false,
