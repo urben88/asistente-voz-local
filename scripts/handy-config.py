@@ -28,6 +28,11 @@ MODELO_ESTANDAR = "gemma4:e4b"
 # fuerza "tauri" (equivalente al default de Handy en Linux).
 KEYBOARD_IMPL_LINUX = "tauri"
 
+# En Linux el pegador por defecto de Handy es "direct" (teclea el texto en el cursor),
+# que funciona tambien donde Ctrl+V no lo hace (terminales, algunos Electron...).
+# El config del repo trae "ctrl_v" (default de Windows). Se puede cambiar en Ajustes.
+PASTE_METHOD_LINUX = "direct"
+
 
 def leer_json(path):
     with open(path, "r", encoding="utf-8") as fh:
@@ -40,7 +45,7 @@ def escribir_json(path, data):
         fh.write("\n")
 
 
-def merge(repo_path, live_path, assistant_model="", full_copy=False):
+def merge(repo_path, live_path, assistant_model="", full_copy=False, solo_dictado=False):
     src = leer_json(repo_path)
     res = {
         "ok": False,
@@ -57,6 +62,8 @@ def merge(repo_path, live_path, assistant_model="", full_copy=False):
         "keys_after": 0,
         "assistant_model": "",
         "keyboard_impl": "",
+        "paste_method": "",
+        "post_process_enabled": None,
         "error": "",
     }
 
@@ -89,7 +96,11 @@ def merge(repo_path, live_path, assistant_model="", full_copy=False):
     dest_settings["custom_words"] = list(src_settings.get("custom_words") or [])
     dest_settings["extra_recording_buffer_ms"] = esperado_buffer
     dest_settings["keyboard_implementation"] = KEYBOARD_IMPL_LINUX
-    if assistant_model and assistant_model != MODELO_ESTANDAR:
+    dest_settings["paste_method"] = PASTE_METHOD_LINUX
+    if solo_dictado:
+        # Solo transcripcion: se desactiva el post-procesado (IA). El dictado no lo necesita.
+        dest_settings["post_process_enabled"] = False
+    elif assistant_model and assistant_model != MODELO_ESTANDAR:
         dest_settings.setdefault("post_process_models", {})["custom"] = assistant_model
 
     escribir_json(live_path, dest)
@@ -103,14 +114,18 @@ def merge(repo_path, live_path, assistant_model="", full_copy=False):
     res["keys_after"] = len(final.keys())
     res["assistant_model"] = (final.get("post_process_models") or {}).get("custom", "")
     res["keyboard_impl"] = final.get("keyboard_implementation")
+    res["paste_method"] = final.get("paste_method")
+    res["post_process_enabled"] = final.get("post_process_enabled")
 
     print("")
     print("Aplicado:")
     print("  selected_model            : %s" % res["selected_model"])
     print("  extra_recording_buffer_ms : %s" % res["buffer"])
     print("  keyboard_implementation   : %s" % res["keyboard_impl"])
+    print("  paste_method              : %s" % res["paste_method"])
+    print("  post_process_enabled      : %s" % res["post_process_enabled"])
     print("  custom_words (%d): %s" % (res["custom_words"], ", ".join(final.get("custom_words") or [])))
-    if assistant_model:
+    if assistant_model and not solo_dictado:
         print("  post_process_models.custom: %s" % res["assistant_model"])
     if not full_copy:
         print("Conservado:")
@@ -121,14 +136,17 @@ def merge(repo_path, live_path, assistant_model="", full_copy=False):
     ok = (
         res["selected_model"] == esperado_modelo
         and res["custom_words"] == esperado_palabras
-        and res["buffer"] == esperado_buffer
+        and         res["buffer"] == esperado_buffer
         and res["keyboard_impl"] == KEYBOARD_IMPL_LINUX
+        and res["paste_method"] == PASTE_METHOD_LINUX
     )
     if not full_copy:
         ok = ok and res["mic_after"] == res["mic_before"]
         ok = ok and res["prompts_after"] == res["prompts_before"]
         ok = ok and res["keys_after"] == res["keys_before"]
-    if assistant_model:
+    if solo_dictado:
+        ok = ok and res["post_process_enabled"] is False
+    elif assistant_model:
         ok = ok and res["assistant_model"] == assistant_model
 
     if not ok:
@@ -147,6 +165,7 @@ def resumen(live_path):
     print("  selected_model            : %s" % s.get("selected_model"))
     print("  extra_recording_buffer_ms : %s" % s.get("extra_recording_buffer_ms"))
     print("  keyboard_implementation   : %s" % s.get("keyboard_implementation"))
+    print("  post_process_enabled      : %s" % s.get("post_process_enabled"))
     print("  custom_words              : %s" % len(s.get("custom_words") or []))
     print("  selected_microphone       : %s" % s.get("selected_microphone"))
     print("  post_process_prompts      : %s" % len(s.get("post_process_prompts") or []))
@@ -163,6 +182,7 @@ def main():
     p_merge.add_argument("--live", required=True)
     p_merge.add_argument("--assistant-model", default="")
     p_merge.add_argument("--full-copy", action="store_true")
+    p_merge.add_argument("--solo-dictado", action="store_true")
 
     p_show = sub.add_parser("show", help="muestra un resumen del settings real")
     p_show.add_argument("--live", required=True)
@@ -172,7 +192,7 @@ def main():
     if args.cmd == "show":
         return resumen(args.live)
 
-    res = merge(args.repo, args.live, args.assistant_model, args.full_copy)
+    res = merge(args.repo, args.live, args.assistant_model, args.full_copy, args.solo_dictado)
     if res["error"]:
         print("ERROR: %s" % res["error"], file=sys.stderr)
     return 0 if res["ok"] else 1

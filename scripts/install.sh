@@ -7,6 +7,8 @@
 # Opciones:
 #   --simular             solo comprueba la maquina y explica lo que haria
 #                         (no instala, no descarga, no copia y no toca la configuracion)
+#   --solo-dictado        SOLO transcripcion: no instala Ollama ni modelos de IA
+#                         (alias: --sin-ia). Se activa solo si no hay GPU NVIDIA.
 #   --modelo <modelo>     fuerza el modelo de texto del asistente (p. ej. qwen3:4b-instruct)
 #   --no-abrir            no ofrece abrir Handy al terminar
 #   --metodo <modo>       como instalar Handy: auto | deb | appimage (por defecto: auto)
@@ -23,9 +25,10 @@ REPO_CONFIG="$REPO_ROOT/config/handy-settings.json"
 ASISTENTE_MODELO=""
 NO_ABRIR=0
 METODO="auto"
+SOLO_DICTADO=0
 
 uso() {
-    sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # --- Argumentos ---
@@ -33,6 +36,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --simular) SIMULAR=1 ;;
         --no-abrir) NO_ABRIR=1 ;;
+        --solo-dictado|--sin-ia) SOLO_DICTADO=1 ;;
         --modelo) ASISTENTE_MODELO="${2:-}"; shift ;;
         --metodo) METODO="${2:-}"; shift ;;
         -h|--ayuda|--help) uso; exit 0 ;;
@@ -245,27 +249,33 @@ fi
 #  Eleccion del modelo del asistente
 # =====================================================================
 
-paso "Modelo del asistente (IA de texto)"
+paso "IA del asistente (resumen / redaccion)"
 MOTIVO_MODELO=""
-if [ -n "$ASISTENTE_MODELO" ]; then
+MODELOS_ASISTENTE=()
+if [ "$SOLO_DICTADO" -eq 1 ]; then
+    printf '%s  Modo SOLO DICTADO (--solo-dictado): no se instala IA ni modelos.%s\n' "$C_CYAN" "$C_RESET"
+elif [ -n "$ASISTENTE_MODELO" ]; then
     MOTIVO_MODELO="forzado con --modelo"
-else
-    if VRAM=$(obtener_vram_nvidia); then
-        if [ "$VRAM" -lt "$VRAM_MINIMA" ]; then
-            ASISTENTE_MODELO="$MODELO_LIGERO"
-            MOTIVO_MODELO="GPU NVIDIA con $VRAM MiB de VRAM (menos de $VRAM_MINIMA MiB)"
-        else
-            ASISTENTE_MODELO="$MODELO_ESTANDAR"
-            MOTIVO_MODELO="GPU NVIDIA con $VRAM MiB de VRAM ($VRAM_MINIMA MiB o mas)"
-        fi
-    else
+elif VRAM=$(obtener_vram_nvidia); then
+    if [ "$VRAM" -lt "$VRAM_MINIMA" ]; then
         ASISTENTE_MODELO="$MODELO_LIGERO"
-        MOTIVO_MODELO="no se detecta GPU NVIDIA (nvidia-smi)"
+        MOTIVO_MODELO="GPU NVIDIA con $VRAM MiB de VRAM (menos de $VRAM_MINIMA MiB)"
+    else
+        ASISTENTE_MODELO="$MODELO_ESTANDAR"
+        MOTIVO_MODELO="GPU NVIDIA con $VRAM MiB de VRAM ($VRAM_MINIMA MiB o mas)"
     fi
+else
+    # Sin GPU NVIDIA: este PC no puede mover un modelo de IA con soltura.
+    # Se instala SOLO dictado (el asistente no es obligatorio para transcribir).
+    SOLO_DICTADO=1
+    printf '%s  No se detecta GPU NVIDIA: se instala SOLO dictado (sin IA).%s\n' "$C_AMAR" "$C_RESET"
+    printf '%s  Para forzar la IA en CPU igualmente, usa --modelo qwen3:4b-instruct.%s\n' "$C_AMAR" "$C_RESET"
 fi
-printf '%s  Modelo elegido: %s (%s)%s\n' "$C_CYAN" "$ASISTENTE_MODELO" "$MOTIVO_MODELO" "$C_RESET"
-MODELOS_ASISTENTE=("$ASISTENTE_MODELO")
-[ "$ASISTENTE_MODELO" != "$MODELO_LIGERO" ] && MODELOS_ASISTENTE+=("$MODELO_LIGERO")
+if [ "$SOLO_DICTADO" -eq 0 ]; then
+    printf '%s  Modelo elegido: %s (%s)%s\n' "$C_CYAN" "$ASISTENTE_MODELO" "$MOTIVO_MODELO" "$C_RESET"
+    MODELOS_ASISTENTE=("$ASISTENTE_MODELO")
+    [ "$ASISTENTE_MODELO" != "$MODELO_LIGERO" ] && MODELOS_ASISTENTE+=("$MODELO_LIGERO")
+fi
 
 # =====================================================================
 #  Fase 1: Handy
@@ -302,7 +312,10 @@ fi
 # =====================================================================
 
 paso "[2/5] Ollama (IA local)"
-if command -v ollama >/dev/null 2>&1; then
+SERVIDOR_OLLAMA=0
+if [ "$SOLO_DICTADO" -eq 1 ]; then
+    ok "Omitido: modo solo dictado (no se instala ni arranca Ollama)"
+elif command -v ollama >/dev/null 2>&1; then
     ok "Ollama ya instalado ($(command -v ollama))"
 else
     aviso "Ollama no esta instalado"
@@ -319,25 +332,26 @@ else
 fi
 
 # Servidor de Ollama escuchando en 127.0.0.1:11434
-SERVIDOR_OLLAMA=0
-if probar_ollama; then
-    SERVIDOR_OLLAMA=1
-    ok "Servidor de Ollama respondiendo en http://127.0.0.1:11434"
-else
-    aviso "El servidor de Ollama no responde"
-    if [ "$SIMULAR" -eq 1 ]; then
-        simula "arrancaria el servidor (systemctl start ollama o 'ollama serve') y esperaria hasta 60 s"
+if [ "$SOLO_DICTADO" -eq 0 ]; then
+    if probar_ollama; then
+        SERVIDOR_OLLAMA=1
+        ok "Servidor de Ollama respondiendo en http://127.0.0.1:11434"
     else
-        arrancar_ollama
-        printf '  Esperando a que arranque el servidor (hasta 60 s)...\n'
-        i=0
-        while [ "$i" -lt 30 ]; do
-            sleep 2
-            if probar_ollama; then SERVIDOR_OLLAMA=1; break; fi
-            i=$((i + 1))
-        done
-        if [ "$SERVIDOR_OLLAMA" -eq 1 ]; then ok "Servidor de Ollama en marcha"
-        else aviso "El servidor de Ollama no arranca: abre Ollama y repite el instalador"; fi
+        aviso "El servidor de Ollama no responde"
+        if [ "$SIMULAR" -eq 1 ]; then
+            simula "arrancaria el servidor (systemctl start ollama o 'ollama serve') y esperaria hasta 60 s"
+        else
+            arrancar_ollama
+            printf '  Esperando a que arranque el servidor (hasta 60 s)...\n'
+            i=0
+            while [ "$i" -lt 30 ]; do
+                sleep 2
+                if probar_ollama; then SERVIDOR_OLLAMA=1; break; fi
+                i=$((i + 1))
+            done
+            if [ "$SERVIDOR_OLLAMA" -eq 1 ]; then ok "Servidor de Ollama en marcha"
+            else aviso "El servidor de Ollama no arranca: abre Ollama y repite el instalador"; fi
+        fi
     fi
 fi
 
@@ -346,7 +360,12 @@ fi
 # =====================================================================
 
 paso "[3/5] Modelos del asistente (Ollama)"
-MODELOS_PRESENTES="$(obtener_modelos_ollama 2>/dev/null || true)"
+MODELOS_PRESENTES=""
+if [ "$SOLO_DICTADO" -eq 1 ]; then
+    ok "Omitido: modo solo dictado (no se descargan modelos de IA)"
+else
+    MODELOS_PRESENTES="$(obtener_modelos_ollama 2>/dev/null || true)"
+fi
 for modelo in "${MODELOS_ASISTENTE[@]}"; do
     if tiene_modelo "$MODELOS_PRESENTES" "$modelo"; then
         ok "Modelo presente: $modelo"
@@ -400,7 +419,9 @@ else
     CAMINO="copia"
     printf '  %sCamino: COPIA completa de config/handy-settings.json (no habia configuracion previa)%s\n' "$C_CYAN" "$C_RESET"
 fi
-if [ "$ASISTENTE_MODELO" != "$MODELO_ESTANDAR" ]; then
+if [ "$SOLO_DICTADO" -eq 1 ]; then
+    printf '  %sSolo dictado: se desactivara el post-procesado IA (post_process_enabled=false)%s\n' "$C_CYAN" "$C_RESET"
+elif [ "$ASISTENTE_MODELO" != "$MODELO_ESTANDAR" ]; then
     printf '  %sPC ligero: se ajustara post_process_models.custom a %s%s\n' "$C_CYAN" "$ASISTENTE_MODELO" "$C_RESET"
 fi
 
@@ -410,11 +431,16 @@ if [ "$SIMULAR" -eq 1 ]; then
     else
         simula "crearia $CFG copiando config/handy-settings.json"
     fi
-    [ "$ASISTENTE_MODELO" != "$MODELO_ESTANDAR" ] && simula "ajustaria post_process_models.custom a $ASISTENTE_MODELO"
+    if [ "$SOLO_DICTADO" -eq 1 ]; then
+        simula "desactivaria post_process_enabled (solo dictado)"
+    elif [ "$ASISTENTE_MODELO" != "$MODELO_ESTANDAR" ]; then
+        simula "ajustaria post_process_models.custom a $ASISTENTE_MODELO"
+    fi
 else
     mkdir -p "$CFG_DIR"
     ARGS=(merge --repo "$REPO_CONFIG" --live "$CFG")
-    [ "$ASISTENTE_MODELO" != "$MODELO_ESTANDAR" ] && ARGS+=(--assistant-model "$ASISTENTE_MODELO")
+    [ "$SOLO_DICTADO" -eq 0 ] && [ "$ASISTENTE_MODELO" != "$MODELO_ESTANDAR" ] && ARGS+=(--assistant-model "$ASISTENTE_MODELO")
+    [ "$SOLO_DICTADO" -eq 1 ] && ARGS+=(--solo-dictado)
     [ "$CAMINO" = "copia" ] && ARGS+=(--full-copy)
     if python3 "$SCRIPT_DIR/handy-config.py" "${ARGS[@]}"; then
         MERGE_OK=1
@@ -458,8 +484,10 @@ else
     dato "refs/main" "no existe"
 fi
 
-# Ollama
-if probar_ollama; then
+# Ollama / IA
+if [ "$SOLO_DICTADO" -eq 1 ]; then
+    dato "IA / Ollama" "solo dictado (no requerido)"
+elif probar_ollama; then
     dato "Ollama" "servidor en marcha (http://127.0.0.1:11434)"
     MODELOS_FIN="$(obtener_modelos_ollama 2>/dev/null || true)"
     for modelo in "${MODELOS_ASISTENTE[@]}"; do

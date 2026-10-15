@@ -35,24 +35,26 @@ También se puede ejecutar las veces que quieras: cada paso comprueba antes de a
 
 ```bash
 bash scripts/install.sh --simular                    # ver que haria sin tocar nada (no instala ni descarga)
+bash scripts/install.sh --solo-dictado               # SOLO transcripcion: sin Ollama ni modelos de IA (alias --sin-ia)
 bash scripts/install.sh --modelo qwen3:4b-instruct   # forzar el modelo ligero del asistente
 bash scripts/install.sh --metodo appimage            # instalar Handy sin sudo (en ~/.local/bin/handy)
 bash scripts/install.sh --metodo deb                 # forzar la instalacion del .deb con apt
 bash scripts/install.sh --no-abrir                   # no ofrecer abrir Handy al terminar
 ```
 
+**Sin GPU NVIDIA no hace falta la IA**: si el instalador no detecta `nvidia-smi`, activa automáticamente el **modo solo dictado** (no descarga ni requiere Ollama). Si quieres el asistente en CPU igualmente, pásale `--modelo qwen3:4b-instruct`.
+
 - **PC ya configurado**: `bash scripts/patch-config.sh` (solo cambia modelo de dictado, diccionario y buffer; conserva micrófono, atajos y prompts).
 - **Reemplazar toda la config**: `bash scripts/apply-config.sh`.
 
-### Atajos y permisos en Linux
+### Atajos, pegado y permisos en Linux
 
-En Linux Handy usa por defecto el gestor de atajos de **Tauri** (`keyboard_implementation: tauri`), que **no necesita permisos especiales**; el instalador lo configura así automáticamente (el valor `handy_keys` del config compartido es el default de Windows y en Linux exigiría leer `/dev/input`).
-
-- Si no te responde el atajo y quieres usar `handy_keys` (lectura directa del teclado), añade tu usuario al grupo `input` y reinicia la sesión:
+- **Atajos**: en Linux Handy usa por defecto el gestor de **Tauri** (`keyboard_implementation: tauri`), que **no necesita permisos especiales**; el instalador lo configura así (el valor `handy_keys` del config compartido es el default de Windows y en Linux exigiría leer `/dev/input`).
+  Si algún día quieres usar `handy_keys`, añade tu usuario al grupo `input` y reinicia la sesión:
   ```bash
   sudo usermod -aG input $USER
   ```
-  Después cambia en Handy → Ajustes → Avanzado la implementación de teclado, o edita `keyboard_implementation` en `~/.local/share/com.pais.handy/settings_store.json` (con Handy cerrado).
+- **Pegado automático en el cursor**: el instalador deja `paste_method: direct` (Handy teclea el texto en el cursor), el default de Handy en Linux; funciona también en terminales y apps donde `Ctrl+V` no pega. Para ello se apoya en `xdotool` en X11 (el instalador deja `xdotool` en `~/.local/bin` si no está en el sistema). Todo esto se puede cambiar en Handy → Ajustes.
 
 ### Requisitos Linux
 
