@@ -1,8 +1,8 @@
 # Asistente de voz local (Handy + Ollama)
 
-Dictado por voz con IA **100% local** para Windows: hablas y obtienes transcripción, resúmenes, correos o lo que pidas — sin enviar nada a la nube.
+Dictado por voz con IA **100% local** para Windows y Linux: hablas y obtienes transcripción, resúmenes, correos o lo que pidas — sin enviar nada a la nube.
 
-## Instalación en 1 clic
+## Instalación en 1 clic (Windows)
 
 1. **Consigue la carpeta**: clona el repositorio (`git clone …`) o descarga el ZIP y descomprímelo.
 2. **Doble clic en `Instalar.cmd`** (está en la raíz de la carpeta).
@@ -11,6 +11,44 @@ Dictado por voz con IA **100% local** para Windows: hablas y obtienes transcripc
 5. **Al terminar**: abre Handy, elige tu micrófono en Ajustes y prueba los dos atajos (`Ctrl + Alt + Espacio` y `Ctrl + Shift + Espacio`). El instalador te ofrece abrirlo al final.
 
 Puedes ejecutarlo las veces que quieras: cada paso comprueba antes de actuar y no repite lo que ya está hecho.
+
+## Instalación en Linux (Mint / Ubuntu / Debian)
+
+Equivalente Linux de `Instalar.cmd`: mismo Handy y Ollama, con los mismos modelos, atajos, prompts y diccionario.
+
+1. **Consigue la carpeta**: clona el repositorio o descarga el ZIP y descomprímelo.
+2. **En una terminal, dentro de la carpeta**: `./Instalar.sh`
+3. **Espera**: se descargan los mismos modelos que en Windows (~11 GB). Handy se instala con `.deb` (pedirá tu contraseña de `sudo`) o, si no hay permisos de administrador, como **AppImage** en `~/.local/bin/handy`.
+4. **Al terminar**: abre Handy, elige tu micrófono en Ajustes y prueba los dos atajos.
+
+También se puede ejecutar las veces que quieras: cada paso comprueba antes de actuar y no repite lo que ya está hecho.
+
+### Rutas en Linux
+
+| Qué | Dónde |
+|---|---|
+| Config de Handy | `~/.config/com.pais.handy/settings_store.json` |
+| Modelo de dictado | `~/.cache/huggingface/hub/models--handy-computer--cohere-transcribe-03-2026-gguf/…` |
+| Servidor de Ollama | `http://127.0.0.1:11434` |
+
+### Opciones (Linux)
+
+```bash
+bash scripts/install.sh --simular                    # ver que haria sin tocar nada (no instala ni descarga)
+bash scripts/install.sh --modelo qwen3:4b-instruct   # forzar el modelo ligero del asistente
+bash scripts/install.sh --metodo appimage            # instalar Handy sin sudo (en ~/.local/bin/handy)
+bash scripts/install.sh --metodo deb                 # forzar la instalacion del .deb con apt
+bash scripts/install.sh --no-abrir                   # no ofrecer abrir Handy al terminar
+```
+
+- **PC ya configurado**: `bash scripts/patch-config.sh` (solo cambia modelo de dictado, diccionario y buffer; conserva micrófono, atajos y prompts).
+- **Reemplazar toda la config**: `bash scripts/apply-config.sh`.
+
+### Requisitos Linux
+
+- Distro de 64 bits compatible con `.deb` (Linux Mint, Ubuntu, Debian) o cualquier distro usando `--metodo appimage`.
+- **~20 GB libres** e internet. `python3` y `curl` (vienen de serie).
+- GPU **NVIDIA opcional**: sin ella el instalador usa el modelo ligero `qwen3:4b-instruct`.
 
 ### Requisitos
 
@@ -137,7 +175,8 @@ Ambos scripts requieren **Handy cerrado** (bandeja del sistema → *Salir*): si 
 
 ```
 asistente-voz-local/
-├── Instalar.cmd                 # doble clic: instala todo (se auto-eleva con UAC)
+├── Instalar.cmd                 # Windows: doble clic: instala todo (se auto-eleva con UAC)
+├── Instalar.sh                  # Linux: ./Instalar.sh (mismas opciones que install.sh)
 ├── README.md
 ├── config/handy-settings.json   # configuración de Handy lista para aplicar
 ├── docs/specs/                  # especificaciones de los cambios
@@ -146,10 +185,15 @@ asistente-voz-local/
 │   ├── correo-formal.md
 │   └── texto-coloquial.md
 └── scripts/
-    ├── install.ps1              # instalador (PC nuevo); opciones -Simular/-AsistenteModelo/-NoAbrir
-    ├── settings-merge.ps1       # merge de config compartido (funciones)
-    ├── patch-config.ps1         # PC ya configurado: solo modelo/diccionario/buffer
-    └── apply-config.ps1         # reemplaza toda la configuración de Handy
+    ├── install.ps1              # Windows: instalador (PC nuevo); -Simular/-AsistenteModelo/-NoAbrir
+    ├── settings-merge.ps1       # Windows: merge de config compartido (funciones)
+    ├── patch-config.ps1         # Windows: PC ya configurado: solo modelo/diccionario/buffer
+    ├── apply-config.ps1         # Windows: reemplaza toda la configuración de Handy
+    ├── install.sh               # Linux: instalador (PC nuevo); --simular/--modelo/--no-abrir/--metodo
+    ├── comun.sh                 # Linux: funciones y constantes compartidas
+    ├── handy-config.py          # Linux: merge de config (equivalente a settings-merge.ps1)
+    ├── patch-config.sh          # Linux: PC ya configurado: solo modelo/diccionario/buffer
+    └── apply-config.sh          # Linux: reemplaza toda la configuración de Handy
 ```
 
 ## Solución de problemas
