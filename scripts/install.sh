@@ -395,7 +395,7 @@ CAMINO=""
 
 if [ -f "$CFG" ]; then
     CAMINO="merge"
-    printf '  %sCamino: MERGE de 3 campos (habia configuracion previa: se conserva tu microfono, atajos y prompts)%s\n' "$C_CYAN" "$C_RESET"
+    printf '  %sCamino: MERGE (habia configuracion previa: se conserva tu microfono, atajos y prompts)%s\n' "$C_CYAN" "$C_RESET"
 else
     CAMINO="copia"
     printf '  %sCamino: COPIA completa de config/handy-settings.json (no habia configuracion previa)%s\n' "$C_CYAN" "$C_RESET"
@@ -406,7 +406,7 @@ fi
 
 if [ "$SIMULAR" -eq 1 ]; then
     if [ "$CAMINO" = "merge" ]; then
-        simula "hararia copia de settings_store.json a settings_store.json.bak y mergearia selected_model, custom_words y extra_recording_buffer_ms"
+        simula "hararia copia de settings_store.json a settings_store.json.bak y mergearia selected_model, custom_words, extra_recording_buffer_ms y keyboard_implementation"
     else
         simula "crearia $CFG copiando config/handy-settings.json"
     fi

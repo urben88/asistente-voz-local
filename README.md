@@ -27,7 +27,7 @@ También se puede ejecutar las veces que quieras: cada paso comprueba antes de a
 
 | Qué | Dónde |
 |---|---|
-| Config de Handy | `~/.config/com.pais.handy/settings_store.json` |
+| Config de Handy | `~/.local/share/com.pais.handy/settings_store.json` |
 | Modelo de dictado | `~/.cache/huggingface/hub/models--handy-computer--cohere-transcribe-03-2026-gguf/…` |
 | Servidor de Ollama | `http://127.0.0.1:11434` |
 
@@ -43,6 +43,16 @@ bash scripts/install.sh --no-abrir                   # no ofrecer abrir Handy al
 
 - **PC ya configurado**: `bash scripts/patch-config.sh` (solo cambia modelo de dictado, diccionario y buffer; conserva micrófono, atajos y prompts).
 - **Reemplazar toda la config**: `bash scripts/apply-config.sh`.
+
+### Atajos y permisos en Linux
+
+En Linux Handy usa por defecto el gestor de atajos de **Tauri** (`keyboard_implementation: tauri`), que **no necesita permisos especiales**; el instalador lo configura así automáticamente (el valor `handy_keys` del config compartido es el default de Windows y en Linux exigiría leer `/dev/input`).
+
+- Si no te responde el atajo y quieres usar `handy_keys` (lectura directa del teclado), añade tu usuario al grupo `input` y reinicia la sesión:
+  ```bash
+  sudo usermod -aG input $USER
+  ```
+  Después cambia en Handy → Ajustes → Avanzado la implementación de teclado, o edita `keyboard_implementation` en `~/.local/share/com.pais.handy/settings_store.json` (con Handy cerrado).
 
 ### Requisitos Linux
 

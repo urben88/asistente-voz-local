@@ -22,6 +22,12 @@ from pathlib import Path
 
 MODELO_ESTANDAR = "gemma4:e4b"
 
+# En Linux Handy usa por defecto el gestor de atajos de Tauri (global-shortcut),
+# que no necesita leer /dev/input. El config del repo trae "handy_keys" (default de
+# Windows), que en Linux exige pertenecer al grupo 'input'. Por eso en Linux se
+# fuerza "tauri" (equivalente al default de Handy en Linux).
+KEYBOARD_IMPL_LINUX = "tauri"
+
 
 def leer_json(path):
     with open(path, "r", encoding="utf-8") as fh:
@@ -50,6 +56,7 @@ def merge(repo_path, live_path, assistant_model="", full_copy=False):
         "keys_before": 0,
         "keys_after": 0,
         "assistant_model": "",
+        "keyboard_impl": "",
         "error": "",
     }
 
@@ -81,6 +88,7 @@ def merge(repo_path, live_path, assistant_model="", full_copy=False):
     dest_settings["selected_model"] = esperado_modelo
     dest_settings["custom_words"] = list(src_settings.get("custom_words") or [])
     dest_settings["extra_recording_buffer_ms"] = esperado_buffer
+    dest_settings["keyboard_implementation"] = KEYBOARD_IMPL_LINUX
     if assistant_model and assistant_model != MODELO_ESTANDAR:
         dest_settings.setdefault("post_process_models", {})["custom"] = assistant_model
 
@@ -94,11 +102,13 @@ def merge(repo_path, live_path, assistant_model="", full_copy=False):
     res["prompts_after"] = len(final.get("post_process_prompts") or [])
     res["keys_after"] = len(final.keys())
     res["assistant_model"] = (final.get("post_process_models") or {}).get("custom", "")
+    res["keyboard_impl"] = final.get("keyboard_implementation")
 
     print("")
     print("Aplicado:")
     print("  selected_model            : %s" % res["selected_model"])
     print("  extra_recording_buffer_ms : %s" % res["buffer"])
+    print("  keyboard_implementation   : %s" % res["keyboard_impl"])
     print("  custom_words (%d): %s" % (res["custom_words"], ", ".join(final.get("custom_words") or [])))
     if assistant_model:
         print("  post_process_models.custom: %s" % res["assistant_model"])
@@ -112,6 +122,7 @@ def merge(repo_path, live_path, assistant_model="", full_copy=False):
         res["selected_model"] == esperado_modelo
         and res["custom_words"] == esperado_palabras
         and res["buffer"] == esperado_buffer
+        and res["keyboard_impl"] == KEYBOARD_IMPL_LINUX
     )
     if not full_copy:
         ok = ok and res["mic_after"] == res["mic_before"]
@@ -135,6 +146,7 @@ def resumen(live_path):
         return 1
     print("  selected_model            : %s" % s.get("selected_model"))
     print("  extra_recording_buffer_ms : %s" % s.get("extra_recording_buffer_ms"))
+    print("  keyboard_implementation   : %s" % s.get("keyboard_implementation"))
     print("  custom_words              : %s" % len(s.get("custom_words") or []))
     print("  selected_microphone       : %s" % s.get("selected_microphone"))
     print("  post_process_prompts      : %s" % len(s.get("post_process_prompts") or []))

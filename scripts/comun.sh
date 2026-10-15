@@ -35,7 +35,9 @@ simula() { [ "$SIMULAR" -eq 1 ] && printf '  %sSIMULA%s %s\n' "$C_CYAN" "$C_RESE
 dato()   { printf '  %-18s: %s\n' "$1" "$2"; }
 
 # --- Rutas ---
-handy_cfg_dir()  { printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/com.pais.handy"; }
+# OJO: Handy (Tauri) guarda la config en app_data_dir, que en Linux es
+# $XDG_DATA_HOME/com.pais.handy (~/.local/share/com.pais.handy), NO en ~/.config.
+handy_cfg_dir()  { printf '%s\n' "${XDG_DATA_HOME:-$HOME/.local/share}/com.pais.handy"; }
 handy_cfg_file() { printf '%s\n' "$(handy_cfg_dir)/settings_store.json"; }
 hf_base()        { printf '%s\n' "${HF_HOME:-$HOME/.cache/huggingface}/hub/models--handy-computer--cohere-transcribe-03-2026-gguf"; }
 gguf_file()      { printf '%s\n' "$(hf_base)/snapshots/$HF_REV/cohere-transcribe-03-2026-Q5_K_M.gguf"; }
