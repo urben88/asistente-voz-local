@@ -12,64 +12,48 @@ Write-Host "Aplicando configuracion del asistente de voz local..." -ForegroundCo
 Write-Host "OJO: este script REEMPLAZA toda la configuracion de Handy (microfono, atajos, prompts...)." -ForegroundColor Yellow
 Write-Host "Si ya tienes Handy configurado en este PC, usa mejor scripts\patch-config.ps1." -ForegroundColor Yellow
 
-# Modelo de dictado (Cohere Transcribe 2B) en el cache de Hugging Face que lee Handy
-$hfRev = "dfa4adebb64f3076b7b6b90b721275cc069cb421"
-$hfBase = Join-Path $env:USERPROFILE ".cache\huggingface\hub\models--handy-computer--cohere-transcribe-03-2026-gguf"
-$hfSnapshots = Join-Path $hfBase "snapshots\$hfRev"
-$hfRefs = Join-Path $hfBase "refs"
-New-Item -ItemType Directory -Force -Path $hfSnapshots | Out-Null
-New-Item -ItemType Directory -Force -Path $hfRefs | Out-Null
-$gguf = Join-Path $hfSnapshots "cohere-transcribe-03-2026-Q5_K_M.gguf"
-$ggufSha = "14d02f1ad6dd77b3a60f82639879012c3adb4fe25c50a5a47a2c4c661daf1558"
-$ggufBytes = 1770270208
+# Modelo de dictado (Whisper Turbo) en la carpeta de modelos que lee Handy
+$modelosDir = Join-Path $env:APPDATA "com.pais.handy\models"
+New-Item -ItemType Directory -Force -Path $modelosDir | Out-Null
+$modeloFile = Join-Path $modelosDir "ggml-large-v3-turbo.bin"
+$modeloUrl = "https://blob.handy.computer/ggml-large-v3-turbo.bin"
+$modeloSha = "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69"
+$modeloBytes = 1624555275
+$modeloOk = $false
 
-if (Test-Path $gguf) {
-    $hashOk = (Get-FileHash $gguf -Algorithm SHA256).Hash.ToLower() -eq $ggufSha
-    $sizeOk = (Get-Item $gguf).Length -eq $ggufBytes
+if (Test-Path $modeloFile) {
+    $hashOk = (Get-FileHash $modeloFile -Algorithm SHA256).Hash.ToLower() -eq $modeloSha
+    $sizeOk = (Get-Item $modeloFile).Length -eq $modeloBytes
     if ($hashOk -and $sizeOk) {
         Write-Host "Modelo de dictado ya presente y verificado."
+        $modeloOk = $true
     } else {
         Write-Warning "El modelo presente no coincide (sha256 o tamano). Se descarga de nuevo."
-        Remove-Item $gguf -Force
+        Remove-Item $modeloFile -Force
     }
 }
 
-if (-not ((Test-Path $gguf) -and ((Get-FileHash $gguf -Algorithm SHA256).Hash.ToLower() -eq $ggufSha))) {
-    Write-Host "Descargando modelo de dictado (Cohere Transcribe 2B, ~1,7 GB)..."
-    $urls = @(
-        "https://huggingface.co/handy-computer/cohere-transcribe-03-2026-gguf/resolve/$hfRev/cohere-transcribe-03-2026-Q5_K_M.gguf",
-        "https://blob.handy.computer/handy-computer/cohere-transcribe-03-2026-gguf/$hfRev/cohere-transcribe-03-2026-Q5_K_M.gguf"
-    )
-    $modeloOk = $false
-    for ($i = 0; $i -lt $urls.Count; $i++) {
-        $origen = if ($i -eq 0) { "Hugging Face" } else { "mirror (blob.handy.computer)" }
-        Write-Host "Descargando desde $origen..."
-        curl.exe -L --fail --retry 3 -o $gguf $urls[$i]
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $gguf)) {
-            $hash = (Get-FileHash $gguf -Algorithm SHA256).Hash.ToLower()
-            $bytes = (Get-Item $gguf).Length
-            if ($hash -eq $ggufSha -and $bytes -eq $ggufBytes) {
-                Write-Host "Modelo de dictado descargado y verificado."
-                $modeloOk = $true
-                break
-            }
-            Write-Warning "El archivo descargado no coincide (sha256 o tamano). Se borra y se prueba otro origen."
-            Remove-Item $gguf -Force
+if (-not $modeloOk) {
+    Write-Host "Descargando modelo de dictado (Whisper Turbo, ~1,5 GB)..."
+    Write-Host "Descargando desde blob.handy.computer..."
+    curl.exe -L --fail --retry 3 -o $modeloFile $modeloUrl
+    if ($LASTEXITCODE -eq 0 -and (Test-Path $modeloFile)) {
+        $hash = (Get-FileHash $modeloFile -Algorithm SHA256).Hash.ToLower()
+        $bytes = (Get-Item $modeloFile).Length
+        if ($hash -eq $modeloSha -and $bytes -eq $modeloBytes) {
+            Write-Host "Modelo de dictado descargado y verificado."
+            $modeloOk = $true
         } else {
-            if (Test-Path $gguf) { Remove-Item $gguf -Force }
-            Write-Warning "Fallo la descarga desde este origen."
+            Write-Warning "El archivo descargado no coincide (sha256 o tamano). Se borra."
+            Remove-Item $modeloFile -Force
         }
-        if ($i -lt ($urls.Count - 1)) {
-            Write-Host "Probando el siguiente origen..."
-        }
+    } else {
+        if (Test-Path $modeloFile) { Remove-Item $modeloFile -Force }
+        Write-Warning "Fallo la descarga desde el origen."
     }
     if (-not $modeloOk) {
         Write-Warning "No se pudo descargar el modelo de dictado. Revisa tu conexion y repite."
     }
-}
-
-if ((Test-Path $gguf) -and ((Get-FileHash $gguf -Algorithm SHA256).Hash.ToLower() -eq $ggufSha)) {
-    Set-Content -Path (Join-Path $hfRefs "main") -Value $hfRev -NoNewline -Encoding ascii
 }
 
 # Configuracion de Handy

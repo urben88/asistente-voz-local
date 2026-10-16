@@ -1,5 +1,5 @@
 # Parche selectivo de la configuracion - Asistente de voz local
-# Copia SOLO el modelo de dictado, el diccionario (custom_words) y el buffer
+# Copia SOLO el modelo de dictado, el diccionario (custom_words), el umbral del corrector (word_correction_threshold) y el buffer
 # de config\handy-settings.json al Handy de ESTE PC.
 # Todo lo demas (microfono, atajos, prompts...) se conserva tal cual.
 # Requiere Handy CERRADO (bandeja del sistema -> Salir).
@@ -13,7 +13,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 Write-Host ""
 Write-Host "==== Parche selectivo de la configuracion de Handy ====" -ForegroundColor Cyan
-Write-Host " Solo se cambian: modelo de dictado, diccionario y buffer." -ForegroundColor Cyan
+Write-Host " Solo se cambian: modelo de dictado, diccionario, umbral del corrector y buffer." -ForegroundColor Cyan
 Write-Host " El resto de tu configuracion (microfono, atajos, prompts) se conserva." -ForegroundColor Cyan
 Write-Host ""
 
@@ -53,4 +53,4 @@ if (-not $res.Ok) {
 }
 
 Write-Host ""
-Write-Host "Listo. Abre Handy y comprueba en Ajustes que el modelo es Cohere Transcribe." -ForegroundColor Green
+Write-Host "Listo. Abre Handy y comprueba en Ajustes que el modelo de dictado es el esperado." -ForegroundColor Green

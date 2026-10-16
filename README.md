@@ -7,7 +7,7 @@ Dictado por voz con IA **100% local** para Windows y Linux: hablas y obtienes tr
 1. **Consigue la carpeta**: clona el repositorio (`git clone …`) o descarga el ZIP y descomprímelo.
 2. **Doble clic en `Instalar.cmd`** (está en la raíz de la carpeta).
 3. **Acepta el aviso de Windows (UAC)**: el instalador pide permisos de administrador porque Ollama se instala a nivel de sistema. Si ya ejecutas como administrador, no aparece aviso.
-4. **Espera**: se descargan unos **11 GB** — Handy (~0,3 GB), el modelo de dictado Cohere Transcribe 2B (~1,7 GB, el de la transcripción precisa), el modelo de texto del asistente (~7 GB) y el modelo ligero de respaldo (~2,5 GB). Según tu conexión puede tardar bastante.
+4. **Espera**: se descargan unos **11 GB** — Handy (~0,3 GB), el modelo de dictado Whisper Turbo (~1,5 GB, el que transcribe completos los dictados largos), el modelo de texto del asistente (~7 GB) y el modelo ligero de respaldo (~2,5 GB). Según tu conexión puede tardar bastante.
 5. **Al terminar**: abre Handy, elige tu micrófono en Ajustes y prueba los dos atajos (`Ctrl + Alt + Espacio` y `Ctrl + Shift + Espacio`). El instalador te ofrece abrirlo al final.
 
 Puedes ejecutarlo las veces que quieras: cada paso comprueba antes de actuar y no repite lo que ya está hecho.
@@ -76,8 +76,8 @@ bash scripts/install.sh --no-abrir                   # no ofrecer abrir Handy al
 | 1. Handy | Lo instala con winget (o muestra la versión si ya está); avisa si es anterior a 0.9.8 |
 | 2. Ollama | Lo instala si falta y arranca su servidor local |
 | 3. Modelos del asistente | Descarga `gemma4:e4b` (estándar) y `qwen3:4b-instruct` (ligero) |
-| 4. Modelo de dictado | Descarga Cohere Transcribe 2B y verifica sha256 y tamaño (Hugging Face y, si falla, su mirror) |
-| 5. Configuración | PC nuevo: copia la config del repo. PC ya configurado: **merge de 3 campos** (modelo de dictado, diccionario y buffer) conservando tu micrófono, atajos y prompts |
+| 4. Modelo de dictado | Descarga Whisper Turbo (`ggml-large-v3-turbo.bin`, ~1,5 GB) en la carpeta de modelos de Handy y verifica sha256 y tamaño |
+| 5. Configuración | PC nuevo: copia la config del repo. PC ya configurado: **merge de 4 campos** (modelo de dictado, diccionario, umbral del corrector y buffer) conservando tu micrófono, atajos y prompts |
 
 **El asistente estándar es `gemma4:e4b`.** En PCs sin GPU NVIDIA suficiente (menos de 8 GB de VRAM) el instalador usa y deja configurado automáticamente `qwen3:4b-instruct`.
 
@@ -100,7 +100,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -NoAbrir
 
 `Instalar.cmd` acepta los mismos argumentos: `Instalar.cmd -Simular`.
 
-- En un PC **ya configurado** usa `scripts\patch-config.ps1`: solo cambia modelo de dictado, diccionario y buffer, conservando el resto (ver *Aplicar esta configuración en un PC ya configurado*).
+- En un PC **ya configurado** usa `scripts\patch-config.ps1`: solo cambia modelo de dictado, diccionario, umbral del corrector y buffer, conservando el resto (ver *Aplicar esta configuración en un PC ya configurado*).
 - `scripts\apply-config.ps1` reemplaza **toda** la configuración de Handy por la del repo.
 
 ### Si algo falla
@@ -126,7 +126,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -NoAbrir
 
 | Pieza | Función | Modelo |
 |---|---|---|
-| [Handy](https://handy.computer) | Captura de voz + transcripción + pegado | Cohere Transcribe 2B (Q5_K_M, GPU vía Vulkan) |
+| [Handy](https://handy.computer) | Captura de voz + transcripción + pegado | Whisper Turbo (`ggml-large-v3-turbo.bin`, GPU vía Vulkan) |
 | [Ollama](https://ollama.com) | Motor de IA de texto local | gemma4:e4b (resúmenes, correos, explicaciones...) |
 
 ## Ejemplos de uso con `Ctrl + Shift + Espacio`
@@ -141,26 +141,36 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -NoAbrir
 
 ### Modelo de dictado
 
-El dictado usa **Cohere Transcribe 2B (Q5_K_M)**: máxima precisión en español, con 14 idiomas soportados y acelerado por GPU (Vulkan). El archivo se guarda en el caché de Hugging Face (`%USERPROFILE%\.cache\huggingface\hub\models--handy-computer--cohere-transcribe-03-2026-gguf\`), que es donde Handy busca los modelos descargados.
+El dictado usa **Whisper Turbo** (`ggml-large-v3-turbo.bin`, ~1,5 GB): es el único modelo del catálogo de Handy con **audio largo nativo**, así que transcribe completo un dictado largo (media hora, por ejemplo) — medido en este PC, unas 10 veces más rápido que el tiempo real con GPU. El archivo se guarda en `%APPDATA%\com.pais.handy\models\`, que es donde Handy busca los modelos descargados.
+
+**Por qué no Cohere**: **Handy 0.9.8 no trocea el audio** (no existe el módulo de fragmentado de versiones posteriores): cada grabación va al modelo en una sola pasada. Cohere Transcribe 2B está entrenado con fragmentos de ~35 s, así que en dictados largos **recorta contenido** (prueba con 121 s de audio: 103 palabras frente a 272 con Whisper Turbo).
 
 Para cambiarlo: **Handy → Ajustes → Modelos**. Alternativas ya disponibles y para qué sirve cada una:
 
 | Modelo | Para qué |
 |---|---|
-| `Cohere Transcribe` | **Máxima precisión** (por defecto). |
+| `Whisper Turbo` | **Por defecto**: dictados largos completos. |
+| `Cohere Transcribe` | **Máxima precisión en frases cortas**, a cambio de recortar los dictados largos. |
 | `Nemotron Streaming 3.5` | La única con **vista previa en vivo** (ves las palabras mientras hablas); precisión baja. |
-| `Whisper Turbo` | Ya está el archivo descargado en el PC (`ggml-large-v3-turbo.bin`); alternativa probada. |
 | `Whisper Large v3` (~1 GB) | Un poco más preciso que Turbo, pero más lento (se descarga al elegirlo). |
 
-**Vista previa en vivo**: los modelos *streaming* (Nemotron) escriben el texto palabra a palabra mientras hablas. Cohere y Whisper **no** son streaming: durante la grabación solo se ve la píldora de estado y el texto aparece completo al terminar (rápido en GPU). Es el precio de la precisión.
+**Vista previa en vivo**: los modelos *streaming* (Nemotron) escriben el texto palabra a palabra mientras hablas. Whisper y Cohere **no** son streaming: durante la grabación solo se ve la píldora de estado y el texto aparece completo al terminar (rápido en GPU). Es el precio de la precisión.
 
-### Diccionario de términos (`custom_words`)
+### Diccionario de términos (`custom_words`) y corrector difuso
 
-Lista de términos que Handy corrige de forma difusa (Levenshtein + Soundex) al transcribir. Sirve para que los términos técnicos y las mayúsculas salgan bien: `PLC`, `Modbus`, `SCADA`, `PostgreSQL`, `PowerShell`... Está definido en `config/handy-settings.json`.
+`custom_words` está **vacío a propósito** en `config/handy-settings.json`. Con los modelos Whisper (el actual) la lista no funciona como diccionario: Handy la envía al modelo como *prompt* del decodificador, lo que **sesga la transcripción** (en las pruebas, la lista de 42 términos llegó a eliminar la puntuación). Con la lista vacía, Whisper usa su comportamiento por defecto.
 
-- **Añadir o quitar términos**: Handy → Ajustes → **Advanced → Custom Words**, o editando `custom_words` en `config/handy-settings.json` y ejecutando `scripts\patch-config.ps1` (con Handy cerrado).
-- **Aviso importante**: no metas palabras que choquen con palabras normales del español (`MES` ≈ "mes", `RAM` ≈ "rama", `REST` ≈ "resto"): la corrección difusa las cambiaría también en frases normales y corrompería el texto.
-- **Buffer de audio**: `extra_recording_buffer_ms = 250` graba 250 ms extra al soltar el atajo para no cortar la última palabra (el detector de voz VAD descarta ese silencio añadido).
+- **Si alguna palabra sale mal** de forma repetida: añádela al diccionario — Handy → Ajustes → **Advanced → Custom Words**, o editando `custom_words` en `config/handy-settings.json` y ejecutando `scripts\patch-config.ps1` (con Handy cerrado). Añade pocos términos y prueba: todos entran en el *prompt* del decodificador.
+- **Aviso**: evita términos que choquen con palabras normales del español (`MES` ≈ "mes",
+  `RAM` ≈ "rama", `REST` ≈ "resto").
+- **Corrector difuso**: `word_correction_threshold = 0.05` (estricto). Con el umbral por defecto de Handy
+  (`0.18`) esa corrección resulta *demasiado agresiva en español*: sustituye palabras normales por
+  términos del diccionario (p. ej. «decir» → «Docker» o «copa» → «CPU»). Con `custom_words` vacío el
+  corrector no tiene con qué sustituir y el umbral queda inerte; se mantiene en `0.05` por si vuelves a
+  añadir términos o cambias a Cohere (que no admite la lista y solo se beneficia de esa corrección
+  leve: mayúsculas y erratas de una letra, `usb` → `USB`).
+- **Buffer de audio**: `extra_recording_buffer_ms = 250` graba 250 ms extra al soltar el atajo para
+  no cortar la última palabra (el detector de voz VAD descarta ese silencio añadido).
 
 ### Otros ajustes
 
@@ -180,7 +190,7 @@ Ambos scripts requieren **Handy cerrado** (bandeja del sistema → *Salir*): si 
 
 | Script | Qué hace |
 |---|---|
-| `scripts\patch-config.ps1` | **Recomendado**: parche selectivo. Copia al Handy real solo `selected_model`, `custom_words` y `extra_recording_buffer_ms` del repo; conserva tu micrófono, atajos, prompts, etc. Crea copia previa `settings_store.json.bak`. |
+| `scripts\patch-config.ps1` | **Recomendado**: parche selectivo. Copia al Handy real solo `selected_model`, `custom_words`, `word_correction_threshold` y `extra_recording_buffer_ms` del repo; conserva tu micrófono, atajos, prompts, etc. Crea copia previa `settings_store.json.bak`. |
 | `scripts\apply-config.ps1` | ⚠️ **Reemplaza toda** la configuración de Handy por la del repo (micrófono, atajos y prompts incluidos) y descarga el modelo de dictado si falta. Úsalo solo si quieres dejar Handy exactamente como el repo. |
 
 ## Estructura
@@ -199,7 +209,7 @@ asistente-voz-local/
 └── scripts/
     ├── install.ps1              # Windows: instalador (PC nuevo); -Simular/-AsistenteModelo/-NoAbrir
     ├── settings-merge.ps1       # Windows: merge de config compartido (funciones)
-    ├── patch-config.ps1         # Windows: PC ya configurado: solo modelo/diccionario/buffer
+    ├── patch-config.ps1         # Windows: PC ya configurado: solo modelo/diccionario/umbral/buffer
     ├── apply-config.ps1         # Windows: reemplaza toda la configuración de Handy
     ├── install.sh               # Linux: instalador (PC nuevo); --simular/--modelo/--no-abrir/--metodo
     ├── comun.sh                 # Linux: funciones y constantes compartidas
@@ -216,7 +226,18 @@ asistente-voz-local/
 - **No aparece el texto**: haz clic en un campo de texto antes de dictar y usa el atajo correcto.
 - **Caracteres raros (▁, ```)**: no cambies el asistente a `gemma3n` — tiene un bug conocido que inyecta caracteres de bloque.
 - **Historial**: Handy guarda las últimas transcripciones (icono de bandeja → ventana principal).
-- **Las palabras raras siguen saliendo mal**: añade esa palabra al diccionario (Handy → Ajustes → Advanced → Custom Words, o `custom_words` en `config/handy-settings.json` + `patch-config.ps1`).
+- **Un dictado largo sale incompleto** (se corta o falta contenido): comprueba que el modelo de dictado
+  es **Whisper Turbo** (Handy → Ajustes → Modelos). Handy 0.9.8 no trocea el audio y Cohere Transcribe
+  recorta los dictados largos.
+- **Quiero la máxima precisión en frases cortas**: cambia a **Cohere Transcribe** en Handy → Ajustes →
+  Modelos (a cambio de que los dictados largos se recorten).
+- **Las palabras raras siguen saliendo mal**: añade esa palabra al diccionario (Handy → Ajustes →
+  Advanced → Custom Words, o `custom_words` en `config/handy-settings.json` + `patch-config.ps1`).
+  Añade pocos términos: con Whisper entran como *prompt* del decodificador y sesgan la transcripción
+  (ver *Diccionario de términos*).
+- **Aparece un término técnico en medio de una frase que no lo pedía**: es el corrector difuso actuando
+  sobre un término que hayas añadido al diccionario. Aquí ya va con umbral estricto (`0.05`); si aun
+  así ocurre, quita ese término del diccionario y avísalo.
 - **Quiero la vista previa en vivo mientras hablo**: cambia a `Nemotron Streaming 3.5` en Handy → Ajustes → Modelos (a cambio de bastante menos precisión).
 
 ## Reutilizar en otro ordenador

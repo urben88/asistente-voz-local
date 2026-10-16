@@ -199,10 +199,10 @@ if ($null -eq $libreGB) {
 }
 
 # --- Conectividad basica (avisa, no bloquea) ---
-$netHf = Probar-Puerto -HostName "huggingface.co"
+$netModelo = Probar-Puerto -HostName "blob.handy.computer"
 $netOllama = Probar-Puerto -HostName "ollama.com"
-if ($netHf) { Mostrar-Ok "Conectividad: huggingface.co accesible" }
-else { Mostrar-Aviso "No se puede acceder a huggingface.co (se intentara el mirror para el modelo de dictado)" }
+if ($netModelo) { Mostrar-Ok "Conectividad: blob.handy.computer accesible" }
+else { Mostrar-Aviso "No se puede acceder a blob.handy.computer (no se podra descargar el modelo de dictado)" }
 if ($netOllama) { Mostrar-Ok "Conectividad: ollama.com accesible" }
 else { Mostrar-Aviso "No se puede acceder a ollama.com (no se podran descargar los modelos del asistente)" }
 
@@ -373,23 +373,21 @@ foreach ($modelo in $modelosAsistente) {
 }
 
 # =====================================================================
-#  Fase 4: Modelo de dictado (Cohere Transcribe 2B)
+#  Fase 4: Modelo de dictado (Whisper Turbo)
 # =====================================================================
 
-Mostrar-Paso "[4/5] Modelo de dictado (Cohere Transcribe 2B, ~1,7 GB)"
-# Handy busca los modelos en el cache de Hugging Face: models--<org>--<repo>\snapshots\<revision>\<archivo>
-$hfRev = "dfa4adebb64f3076b7b6b90b721275cc069cb421"
-$hfBase = Join-Path $env:USERPROFILE ".cache\huggingface\hub\models--handy-computer--cohere-transcribe-03-2026-gguf"
-$hfSnapshots = Join-Path $hfBase "snapshots\$hfRev"
-$hfRefs = Join-Path $hfBase "refs"
-$gguf = Join-Path $hfSnapshots "cohere-transcribe-03-2026-Q5_K_M.gguf"
-$ggufSha = "14d02f1ad6dd77b3a60f82639879012c3adb4fe25c50a5a47a2c4c661daf1558"
-$ggufBytes = 1770270208
+Mostrar-Paso "[4/5] Modelo de dictado (Whisper Turbo, ~1,5 GB)"
+# Handy guarda los modelos de dictado en %APPDATA%\com.pais.handy\models\
+$modelosDir = Join-Path $env:APPDATA "com.pais.handy\models"
+$modeloFile = Join-Path $modelosDir "ggml-large-v3-turbo.bin"
+$modeloUrl = "https://blob.handy.computer/ggml-large-v3-turbo.bin"
+$modeloSha = "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69"
+$modeloBytes = 1624555275
 $modeloOk = $false
 
-if (Test-Path $gguf) {
-    $hashOk = (Get-FileHash $gguf -Algorithm SHA256).Hash.ToLower() -eq $ggufSha
-    $sizeOk = (Get-Item $gguf).Length -eq $ggufBytes
+if (Test-Path $modeloFile) {
+    $hashOk = (Get-FileHash $modeloFile -Algorithm SHA256).Hash.ToLower() -eq $modeloSha
+    $sizeOk = (Get-Item $modeloFile).Length -eq $modeloBytes
     if ($hashOk -and $sizeOk) {
         Mostrar-Ok "El modelo de dictado ya esta presente y verificado (sha256 y tamano)"
         $modeloOk = $true
@@ -398,7 +396,7 @@ if (Test-Path $gguf) {
         if ($Simular) {
             Mostrar-Simulacion "borraria el archivo y lo descargaria de nuevo"
         } else {
-            Remove-Item $gguf -Force
+            Remove-Item $modeloFile -Force
         }
     }
 } else {
@@ -407,31 +405,24 @@ if (Test-Path $gguf) {
 
 if (-not $modeloOk) {
     if ($Simular) {
-        Mostrar-Simulacion "descargaria el .gguf (~1,7 GB) de Hugging Face y, si falla, del mirror blob.handy.computer; verifica sha256 y tamano"
+        Mostrar-Simulacion "descargaria el .bin (~1,5 GB) de blob.handy.computer; verifica sha256 y tamano"
     } else {
-        New-Item -ItemType Directory -Force -Path $hfSnapshots | Out-Null
-        New-Item -ItemType Directory -Force -Path $hfRefs | Out-Null
-        $urls = @(
-            "https://huggingface.co/handy-computer/cohere-transcribe-03-2026-gguf/resolve/$hfRev/cohere-transcribe-03-2026-Q5_K_M.gguf",
-            "https://blob.handy.computer/handy-computer/cohere-transcribe-03-2026-gguf/$hfRev/cohere-transcribe-03-2026-Q5_K_M.gguf"
-        )
-        foreach ($url in $urls) {
-            Write-Host "Descargando desde $url"
-            curl.exe -L --fail --retry 3 -o $gguf $url
-            if ($LASTEXITCODE -eq 0 -and (Test-Path $gguf)) {
-                $hash = (Get-FileHash $gguf -Algorithm SHA256).Hash.ToLower()
-                $bytes = (Get-Item $gguf).Length
-                if ($hash -eq $ggufSha -and $bytes -eq $ggufBytes) {
-                    Write-Host "Modelo de dictado descargado y verificado."
-                    $modeloOk = $true
-                    break
-                }
-                Write-Warning "Descarga incompleta o corrupta desde este origen. Se borra el archivo y se prueba el siguiente."
-                Remove-Item $gguf -Force
+        New-Item -ItemType Directory -Force -Path $modelosDir | Out-Null
+        Write-Host "Descargando desde $modeloUrl"
+        curl.exe -L --fail --retry 3 -o $modeloFile $modeloUrl
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $modeloFile)) {
+            $hash = (Get-FileHash $modeloFile -Algorithm SHA256).Hash.ToLower()
+            $bytes = (Get-Item $modeloFile).Length
+            if ($hash -eq $modeloSha -and $bytes -eq $modeloBytes) {
+                Write-Host "Modelo de dictado descargado y verificado."
+                $modeloOk = $true
             } else {
-                if (Test-Path $gguf) { Remove-Item $gguf -Force }
-                Write-Warning "Fallo la descarga desde este origen."
+                Write-Warning "Descarga incompleta o corrupta. Se borra el archivo."
+                Remove-Item $modeloFile -Force
             }
+        } else {
+            if (Test-Path $modeloFile) { Remove-Item $modeloFile -Force }
+            Write-Warning "Fallo la descarga."
         }
         if (-not $modeloOk) {
             Write-Host ""
@@ -444,22 +435,6 @@ if (-not $modeloOk) {
             Write-Host ""
             Mostrar-Fallo "Modelo de dictado no descargado"
         }
-    }
-}
-
-# refs\main: Handy marca el modelo como "descargado" cuando existe este fichero de revision
-$refsMain = Join-Path $hfRefs "main"
-if ($Simular) {
-    if (Test-Path $refsMain) {
-        $revActual = ([System.IO.File]::ReadAllText($refsMain)).Trim()
-        if ($revActual -eq $hfRev) { Mostrar-Ok ("refs\main correcto (" + $revActual + ")") }
-        else { Mostrar-Aviso ("refs\main apunta a " + $revActual + " (se reescribiria con " + $hfRev + ")") }
-    } else {
-        Mostrar-Simulacion ("escribiria refs\main con la revision " + $hfRev)
-    }
-} else {
-    if ($modeloOk) {
-        Set-Content -Path $refsMain -Value $hfRev -NoNewline -Encoding ascii
     }
 }
 
@@ -486,7 +461,7 @@ $cfgDir = Join-Path $env:APPDATA "com.pais.handy"
 $cfg = Join-Path $cfgDir "settings_store.json"
 $hayConfig = Test-Path $cfg
 if ($hayConfig) {
-    Write-Host "  Camino: MERGE de 3 campos (habia configuracion previa: se conserva tu microfono, atajos y prompts)" -ForegroundColor Cyan
+    Write-Host "  Camino: MERGE de 4 campos (habia configuracion previa: se conserva tu microfono, atajos y prompts)" -ForegroundColor Cyan
 } else {
     Write-Host "  Camino: COPIA completa de config\handy-settings.json (no habia configuracion previa)" -ForegroundColor Cyan
 }
@@ -497,7 +472,7 @@ if ($AsistenteModelo -ne $modeloEstandar) {
 $resMerge = $null
 if ($Simular) {
     if ($hayConfig) {
-        Mostrar-Simulacion ("hararia copia de settings_store.json a settings_store.json.bak y mergearia selected_model, custom_words y extra_recording_buffer_ms")
+        Mostrar-Simulacion ("hararia copia de settings_store.json a settings_store.json.bak y mergearia selected_model, custom_words, word_correction_threshold y extra_recording_buffer_ms")
     } else {
         Mostrar-Simulacion ("crearia " + $cfg + " copiando config\handy-settings.json")
     }
@@ -535,22 +510,17 @@ if ($handyExe -ne "") {
     Mostrar-Dato "Handy" "no instalado" "Red"
 }
 
-# Modelo de dictado + refs\main
-if (Test-Path $gguf) {
-    $hashFin = (Get-FileHash $gguf -Algorithm SHA256).Hash.ToLower()
-    $bytesFin = (Get-Item $gguf).Length
-    if ($hashFin -eq $ggufSha -and $bytesFin -eq $ggufBytes) {
-        Mostrar-Dato "Modelo de dictado" ("Cohere Q5_K_M presente (" + $bytesFin + " bytes, sha256 correcto)") "Green"
+# Modelo de dictado
+if (Test-Path $modeloFile) {
+    $hashFin = (Get-FileHash $modeloFile -Algorithm SHA256).Hash.ToLower()
+    $bytesFin = (Get-Item $modeloFile).Length
+    if ($hashFin -eq $modeloSha -and $bytesFin -eq $modeloBytes) {
+        Mostrar-Dato "Modelo de dictado" ("Whisper Turbo presente (" + $bytesFin + " bytes, sha256 correcto)") "Green"
     } else {
         Mostrar-Dato "Modelo de dictado" ("presente pero NO coincide (" + $bytesFin + " bytes, sha256 " + $hashFin + ")") "Red"
     }
 } else {
     Mostrar-Dato "Modelo de dictado" "no descargado" "Red"
-}
-if (Test-Path $refsMain) {
-    Mostrar-Dato "refs\main" ([System.IO.File]::ReadAllText($refsMain).Trim())
-} else {
-    Mostrar-Dato "refs\main" "no existe" "Yellow"
 }
 
 # Ollama
@@ -569,12 +539,12 @@ if (Probar-Ollama) {
 }
 
 # Conexion
-Mostrar-Dato "Conexion" ("huggingface.co " + $(if ($netHf) { "OK" } else { "sin respuesta" }) + " | ollama.com " + $(if ($netOllama) { "OK" } else { "sin respuesta" }))
+Mostrar-Dato "Conexion" ("blob.handy.computer " + $(if ($netModelo) { "OK" } else { "sin respuesta" }) + " | ollama.com " + $(if ($netOllama) { "OK" } else { "sin respuesta" }))
 
 # Configuracion
 if ($Simular) {
     if ($hayConfig) {
-        Mostrar-Dato "Settings" ("sin tocar (merge de 3 campos en " + $cfg + ")")
+        Mostrar-Dato "Settings" ("sin tocar (merge de 4 campos en " + $cfg + ")")
     } else {
         Mostrar-Dato "Settings" ("sin tocar (copia completa a " + $cfg + ")")
     }
@@ -583,7 +553,7 @@ if ($Simular) {
     if ($resMerge.CopiaCompleta) {
         Mostrar-Dato "Camino" "copia completa (PC nuevo)"
     } else {
-        Mostrar-Dato "Camino" ("merge de 3 campos; microfono conservado: " + $resMerge.MicrofonoFinal)
+        Mostrar-Dato "Camino" ("merge de 4 campos; microfono conservado: " + $resMerge.MicrofonoFinal)
     }
     Mostrar-Dato "Copia previa" $resMerge.Backup
 } else {

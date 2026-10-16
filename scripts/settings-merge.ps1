@@ -1,7 +1,7 @@
 # Merge de configuracion de Handy - Asistente de voz local
 # Se carga con dot-source desde install.ps1 y patch-config.ps1 (funcion compartida).
 #
-# Merge-HandySettings copia SOLO selected_model, custom_words y extra_recording_buffer_ms
+# Merge-HandySettings copia SOLO selected_model, custom_words, word_correction_threshold y extra_recording_buffer_ms
 # de config\handy-settings.json al settings real de Handy, conservando el resto de claves
 # (microfono, atajos, prompts...). Con -EsCopiaCompleta escribe el fichero entero del repo
 # (PC nuevo, sin configuracion previa).
@@ -33,6 +33,7 @@ function Merge-HandySettings {
         ModeloDictado   = ""
         Palabras        = 0
         Buffer          = 0
+        UmbralCorrector = 0.0
         MicrofonoAntes  = ""
         MicrofonoFinal  = ""
         PromptsAntes    = 0
@@ -64,11 +65,13 @@ function Merge-HandySettings {
     $esperadoModelo = $srcFull.settings.selected_model
     $esperadoPalabras = @($srcFull.settings.custom_words).Count
     $esperadoBuffer = $srcFull.settings.extra_recording_buffer_ms
+    $esperadoUmbral = $srcFull.settings.word_correction_threshold
 
     # --- Estado previo + copia de seguridad ---
     $res.MicrofonoAntes = $dest.settings.selected_microphone
     $res.PromptsAntes = @($dest.settings.post_process_prompts).Count
     $res.ClavesAntes = $dest.settings.PSObject.Properties.Name.Count
+    $teniaUmbral = $dest.settings.PSObject.Properties.Name -contains "word_correction_threshold"
 
     if (Test-Path $LiveConfigPath) {
         Copy-Item $LiveConfigPath "$LiveConfigPath.bak" -Force
@@ -80,6 +83,7 @@ function Merge-HandySettings {
     $dest.settings.selected_model = $esperadoModelo
     $dest.settings.custom_words = @($srcFull.settings.custom_words)
     $dest.settings.extra_recording_buffer_ms = $esperadoBuffer
+    $dest.settings | Add-Member -NotePropertyName word_correction_threshold -NotePropertyValue $esperadoUmbral -Force
     if ($AsistenteModelo -ne "" -and $AsistenteModelo -ne "gemma4:e4b") {
         $dest.settings.post_process_models.custom = $AsistenteModelo
     }
@@ -92,6 +96,7 @@ function Merge-HandySettings {
     $res.ModeloDictado = $final.selected_model
     $res.Palabras = @($final.custom_words).Count
     $res.Buffer = $final.extra_recording_buffer_ms
+    $res.UmbralCorrector = $final.word_correction_threshold
     $res.MicrofonoFinal = $final.selected_microphone
     $res.PromptsFinal = @($final.post_process_prompts).Count
     $res.ClavesFinal = $final.PSObject.Properties.Name.Count
@@ -101,6 +106,7 @@ function Merge-HandySettings {
     Write-Host "Aplicado:" -ForegroundColor Green
     Write-Host ("  selected_model            : " + $final.selected_model)
     Write-Host ("  extra_recording_buffer_ms : " + $final.extra_recording_buffer_ms)
+    Write-Host ("  word_correction_threshold : " + $final.word_correction_threshold)
     Write-Host ("  custom_words (" + $res.Palabras + "): " + ($final.custom_words -join ", "))
     if ($AsistenteModelo -ne "") {
         Write-Host ("  post_process_models.custom: " + $final.post_process_models.custom)
@@ -114,12 +120,13 @@ function Merge-HandySettings {
 
     $ok = ($res.ModeloDictado -eq $esperadoModelo) -and
           ($res.Palabras -eq $esperadoPalabras) -and
-          ($res.Buffer -eq $esperadoBuffer)
+          ($res.Buffer -eq $esperadoBuffer) -and
+          ($res.UmbralCorrector -eq $esperadoUmbral)
     if (-not $EsCopiaCompleta) {
         $ok = $ok -and
               ($res.MicrofonoFinal -eq $res.MicrofonoAntes) -and
               ($res.PromptsFinal -eq $res.PromptsAntes) -and
-              ($res.ClavesFinal -eq $res.ClavesAntes)
+              ($res.ClavesFinal -eq ($res.ClavesAntes + $(if ($teniaUmbral) { 0 } else { 1 })))
     }
     if ($AsistenteModelo -ne "") {
         $ok = $ok -and ($res.AsistenteModelo -eq $AsistenteModelo)
