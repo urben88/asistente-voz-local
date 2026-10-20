@@ -1,0 +1,9 @@
+{
+    "atajo": "ctrl+alt+r",
+    "voz": "em_alex",
+    "velocidad": 1.0,
+    "idioma": "es",
+    "modelo": "kokoro-v1.0.fp16.onnx",
+    "voces": "voices-v1.0.bin",
+    "max_caracteres": 20000
+}

@@ -2,7 +2,7 @@
 # Instalador en 1 clic - Asistente de voz local (Handy + Ollama) para Linux
 #
 # Doble clic o: ./Instalar.sh
-# Opciones extra: pasa los mismos argumentos que install.sh (--simular, --modelo, --no-abrir, --metodo).
+# Opciones extra: pasa los mismos argumentos que install.sh (--simular, --modelo, --no-abrir, --metodo, --sin-lector).
 
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

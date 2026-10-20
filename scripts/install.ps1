@@ -7,13 +7,15 @@
 #                              (no instala, no descarga, no copia y no toca la configuracion)
 #   -AsistenteModelo <modelo>  fuerza el modelo de texto del asistente (p. ej. qwen3:4b-instruct)
 #   -NoAbrir                   no ofrece abrir Handy al terminar
+#   -SinLector                 no instala el lector de voz (fase 6, Kokoro)
 #
 # Requiere Handy CERRADO (bandeja del sistema -> Salir).
 
 param(
     [switch]$Simular,
     [string]$AsistenteModelo = "",
-    [switch]$NoAbrir
+    [switch]$NoAbrir,
+    [switch]$SinLector
 )
 
 $ErrorActionPreference = "Continue"
@@ -143,7 +145,7 @@ if (-not (Test-Path $repoConfig)) {
 #  Preflight (nada se instala hasta terminar estas comprobaciones)
 # =====================================================================
 
-Mostrar-Paso "[0/5] Comprobaciones previas"
+Mostrar-Paso "[0/6] Comprobaciones previas"
 
 # --- Sistema operativo ---
 $verSo = [Environment]::OSVersion.Version
@@ -206,6 +208,14 @@ else { Mostrar-Aviso "No se puede acceder a blob.handy.computer (no se podra des
 if ($netOllama) { Mostrar-Ok "Conectividad: ollama.com accesible" }
 else { Mostrar-Aviso "No se puede acceder a ollama.com (no se podran descargar los modelos del asistente)" }
 
+if (-not $SinLector) {
+    $netGithub = Probar-Puerto -HostName "github.com"
+    if ($netGithub) { Mostrar-Ok "Conectividad: github.com accesible" }
+    else { Mostrar-Aviso "No se puede acceder a github.com (no se podra descargar el modelo del lector de voz)" }
+} else {
+    $netGithub = $false
+}
+
 # --- Handy NO en ejecucion ---
 $procHandy = Get-Process handy -ErrorAction SilentlyContinue
 if ($procHandy) {
@@ -253,7 +263,7 @@ if ($AsistenteModelo -ne $modeloLigero) { $modelosAsistente += $modeloLigero }
 #  Fase 1: Handy
 # =====================================================================
 
-Mostrar-Paso "[1/5] Handy (dictado por voz)"
+Mostrar-Paso "[1/6] Handy (dictado por voz)"
 $handyExe = ""
 foreach ($candidato in @((Join-Path $env:LOCALAPPDATA "Handy\handy.exe"), (Join-Path $env:ProgramFiles "Handy\handy.exe"))) {
     if (Test-Path $candidato) { $handyExe = $candidato; break }
@@ -296,7 +306,7 @@ if ($handyExe -ne "") {
 #  Fase 2: Ollama (instalacion + servidor en marcha)
 # =====================================================================
 
-Mostrar-Paso "[2/5] Ollama (IA local)"
+Mostrar-Paso "[2/6] Ollama (IA local)"
 $ollamaCmd = Get-Command ollama -ErrorAction SilentlyContinue
 $ollamaApp = Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama app.exe"
 
@@ -350,7 +360,7 @@ if ($servidorOllama) {
 #  Fase 3: Modelos del asistente
 # =====================================================================
 
-Mostrar-Paso "[3/5] Modelos del asistente (Ollama)"
+Mostrar-Paso "[3/6] Modelos del asistente (Ollama)"
 $modelosPresentes = Obtener-ModelosOllama
 
 foreach ($modelo in $modelosAsistente) {
@@ -376,7 +386,7 @@ foreach ($modelo in $modelosAsistente) {
 #  Fase 4: Modelo de dictado (Whisper Turbo)
 # =====================================================================
 
-Mostrar-Paso "[4/5] Modelo de dictado (Whisper Turbo, ~1,5 GB)"
+Mostrar-Paso "[4/6] Modelo de dictado (Whisper Turbo, ~1,5 GB)"
 # Handy guarda los modelos de dictado en %APPDATA%\com.pais.handy\models\
 $modelosDir = Join-Path $env:APPDATA "com.pais.handy\models"
 $modeloFile = Join-Path $modelosDir "ggml-large-v3-turbo.bin"
@@ -442,7 +452,7 @@ if (-not $modeloOk) {
 #  Fase 5: Configuracion de Handy
 # =====================================================================
 
-Mostrar-Paso "[5/5] Configuracion de Handy"
+Mostrar-Paso "[5/6] Configuracion de Handy"
 
 # Handy debe estar cerrado: si esta abierto, al salir reescribe el fichero y perderia el cambio
 $procHandy = Get-Process handy -ErrorAction SilentlyContinue
@@ -494,6 +504,178 @@ if ($Simular) {
 }
 
 # =====================================================================
+#  Fase 6: Lector de voz (Kokoro)
+# =====================================================================
+
+Mostrar-Paso "[6/6] Lector de voz (Kokoro, ~0,7 GB entre modelo y entorno Python)"
+
+$lectorDir = Join-Path $env:LOCALAPPDATA "asistente-voz-local\lector"
+$lectorModeloDir = Join-Path $lectorDir "modelo"
+$lectorVenv = Join-Path $lectorDir ".venv"
+$lectorPy = Join-Path $lectorVenv "Scripts\python.exe"
+$lectorPyw = Join-Path $lectorVenv "Scripts\pythonw.exe"
+$lectorLnk = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\Lector de voz.lnk"
+$lectorRepo = Join-Path $repoRoot "lector"
+$lectorUrlBase = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/"
+$lectorArchivos = @(
+    @{ Nombre = "kokoro-v1.0.fp16.onnx"; Bytes = 163527961; Sha = "f3a290d384fbb27966d462905c71a46cef9e5fd00516b40df32a0b4afe77ac96" },
+    @{ Nombre = "voices-v1.0.bin"; Bytes = 28214398; Sha = "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d" }
+)
+$lectorModeloOk = $false
+$lectorAuto = $false
+$lectorVenvOk = $false
+
+function Verificar-ArchivoLector {
+    param([string]$Ruta, [long]$Bytes, [string]$Sha)
+    if (-not (Test-Path $Ruta)) { return $false }
+    if ((Get-Item $Ruta).Length -ne $Bytes) { return $false }
+    return ((Get-FileHash $Ruta -Algorithm SHA256).Hash.ToLower() -eq $Sha)
+}
+
+function Buscar-Uv {
+    $c = Get-Command uv -ErrorAction SilentlyContinue
+    if ($c) { return $c.Source }
+    foreach ($ruta in @((Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\uv.exe"), (Join-Path $env:USERPROFILE ".local\bin\uv.exe"))) {
+        if (Test-Path $ruta) { return $ruta }
+    }
+    return ""
+}
+
+function Buscar-ProcesosLector {
+    return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.CommandLine -and $_.CommandLine.Contains("lector.py") -and
+        $_.CommandLine.IndexOf($lectorDir, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+    })
+}
+
+if ($SinLector) {
+    Mostrar-Ok "Omitido: -SinLector (no se instala el lector de voz)"
+} elseif ($Simular) {
+    Mostrar-Simulacion ("pararia el lector si esta en marcha y copiaria lector\*.py y requirements.txt a " + $lectorDir)
+    Mostrar-Simulacion ("copiaria config\lector.json solo si no existe ya en " + $lectorDir)
+    $uvSim = Buscar-Uv
+    if ($uvSim -eq "") { Mostrar-Simulacion "instalaria uv: winget install --id astral-sh.uv -e --accept-package-agreements --accept-source-agreements" }
+    else { Mostrar-Ok ("uv disponible (" + $uvSim + ")") }
+    if (Test-Path $lectorPy) { Mostrar-Ok "Entorno Python 3.12 ya creado" }
+    else { Mostrar-Simulacion ("crearia el entorno: uv venv -p 3.12 " + $lectorVenv) }
+    Mostrar-Simulacion "instalaria las dependencias: uv pip install -p <python del entorno> -r requirements.txt"
+    foreach ($a in $lectorArchivos) {
+        $destino = Join-Path $lectorModeloDir $a.Nombre
+        if (Verificar-ArchivoLector -Ruta $destino -Bytes $a.Bytes -Sha $a.Sha) {
+            Mostrar-Ok ($a.Nombre + " ya presente y verificado (sha256 y tamano)")
+        } else {
+            Mostrar-Simulacion ("descargaria " + $a.Nombre + " (" + $a.Bytes + " bytes) de github.com; verifica sha256 y tamano")
+        }
+    }
+    Mostrar-Simulacion ("crearia el autoarranque: " + $lectorLnk)
+    Mostrar-Simulacion "arrancaria el lector (sin privilegios de administrador) a traves del acceso directo"
+} else {
+    # 2. Parar el lector si esta en marcha
+    $parados = Buscar-ProcesosLector
+    foreach ($p in $parados) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+    if ($parados.Count -gt 0) { Mostrar-Ok "Lector en marcha parado (se reiniciara al terminar)" }
+
+    # 3. Copiar archivos (la config solo si no existe: se conservan los cambios del usuario)
+    try {
+        New-Item -ItemType Directory -Force -Path $lectorModeloDir | Out-Null
+        $archivosLector = @(Get-ChildItem -Path $lectorRepo -Filter "*.py" -File | ForEach-Object { $_.Name }) + @("requirements.txt")
+        foreach ($f in $archivosLector) {
+            Copy-Item (Join-Path $lectorRepo $f) (Join-Path $lectorDir $f) -Force -ErrorAction Stop
+        }
+        $cfgLectorDestino = Join-Path $lectorDir "lector.json"
+        if (-not (Test-Path $cfgLectorDestino)) {
+            Copy-Item (Join-Path $repoRoot "config\lector.json") $cfgLectorDestino -ErrorAction Stop
+            Mostrar-Ok "Config del lector creada (lector.json)"
+        } else {
+            Mostrar-Ok "Config del lector conservada (ya existia lector.json)"
+        }
+        Mostrar-Ok ("Archivos del lector copiados a " + $lectorDir)
+    } catch {
+        Mostrar-Fallo ("No se han podido copiar los archivos del lector: " + $_.Exception.Message)
+    }
+
+    # 4. uv + entorno Python 3.12 (kokoro-onnx exige Python < 3.14)
+    $uv = Buscar-Uv
+    if ($uv -eq "") {
+        Write-Host "  Instalando uv con winget..."
+        winget install --id astral-sh.uv -e --accept-package-agreements --accept-source-agreements
+        $uv = Buscar-Uv
+    }
+    if ($uv -eq "") {
+        Mostrar-Fallo "No se encuentra uv (instalalo con: winget install astral-sh.uv) y repite el instalador"
+    } else {
+        Mostrar-Ok ("uv disponible (" + $uv + ")")
+        if (-not (Test-Path $lectorPy)) {
+            Write-Host "  Creando el entorno Python 3.12 (puede descargar Python)..."
+            & $uv venv -p 3.12 $lectorVenv
+        }
+        if (Test-Path $lectorPy) {
+            Write-Host "  Instalando dependencias del lector..."
+            & $uv pip install -p $lectorPy -r (Join-Path $lectorDir "requirements.txt")
+            if ($LASTEXITCODE -eq 0) {
+                Mostrar-Ok "Entorno Python del lector listo"
+                $lectorVenvOk = $true
+            } else {
+                Mostrar-Fallo "No se han podido instalar las dependencias del lector"
+            }
+        } else {
+            Mostrar-Fallo "No se ha podido crear el entorno Python 3.12 del lector"
+        }
+    }
+
+    # 5. Modelo (2 archivos) con sha256 y tamano
+    $lectorModeloOk = $true
+    foreach ($a in $lectorArchivos) {
+        $destino = Join-Path $lectorModeloDir $a.Nombre
+        if (Verificar-ArchivoLector -Ruta $destino -Bytes $a.Bytes -Sha $a.Sha) {
+            Mostrar-Ok ($a.Nombre + " ya presente y verificado (sha256 y tamano)")
+            continue
+        }
+        if (Test-Path $destino) {
+            Mostrar-Aviso ($a.Nombre + " no coincide (sha256 o tamano): se descarga de nuevo")
+            Remove-Item $destino -Force
+        }
+        Write-Host ("  Descargando " + $a.Nombre + "...")
+        curl.exe -L --fail --retry 3 -o $destino ($lectorUrlBase + $a.Nombre)
+        if ($LASTEXITCODE -eq 0 -and (Verificar-ArchivoLector -Ruta $destino -Bytes $a.Bytes -Sha $a.Sha)) {
+            Mostrar-Ok ($a.Nombre + " descargado y verificado")
+        } else {
+            if (Test-Path $destino) { Remove-Item $destino -Force }
+            Mostrar-Fallo ("No se ha podido descargar " + $a.Nombre + " (repite el instalador con conexion)")
+            $lectorModeloOk = $false
+        }
+    }
+
+    # 6. Autoarranque (acceso directo en la carpeta Inicio)
+    if ($lectorVenvOk) {
+        try {
+            $sh = New-Object -ComObject WScript.Shell
+            $lnk = $sh.CreateShortcut($lectorLnk)
+            $lnk.TargetPath = $lectorPyw
+            $lnk.Arguments = '"' + (Join-Path $lectorDir "lector.py") + '"'
+            $lnk.WorkingDirectory = $lectorDir
+            $lnk.Description = "Lector de voz local (Kokoro)"
+            $lnk.Save()
+            $lectorAuto = $true
+            Mostrar-Ok "Autoarranque creado (carpeta Inicio de Windows)"
+        } catch {
+            Mostrar-Fallo ("No se ha podido crear el autoarranque del lector: " + $_.Exception.Message)
+        }
+    }
+
+    # 7. Arrancarlo a traves de Explorer: asi corre SIN privilegios de administrador
+    if ($lectorAuto -and $lectorModeloOk) {
+        Start-Process explorer.exe -ArgumentList ('"' + $lectorLnk + '"')
+        Start-Sleep -Seconds 8
+        if ((Buscar-ProcesosLector).Count -gt 0) {
+            Mostrar-Ok "Lector en marcha (atajo Ctrl+Alt+R)"
+        } else {
+            Mostrar-Aviso ("El lector no parece estar en marcha: mira " + (Join-Path $lectorDir "lector.log"))
+        }
+    }
+}
+
+# =====================================================================
 #  Verificacion y resumen final
 # =====================================================================
 
@@ -538,6 +720,20 @@ if (Probar-Ollama) {
     Mostrar-Dato "Ollama" "instalado pero el servidor no responde" "Yellow"
 }
 
+# Lector de voz
+if ($SinLector) {
+    Mostrar-Dato "Lector de voz" "omitido (-SinLector)"
+} else {
+    $okModeloLector = $true
+    foreach ($a in $lectorArchivos) {
+        if (-not (Verificar-ArchivoLector -Ruta (Join-Path $lectorModeloDir $a.Nombre) -Bytes $a.Bytes -Sha $a.Sha)) { $okModeloLector = $false }
+    }
+    $okAutoLector = Test-Path $lectorLnk
+    $colorLector = "Yellow"
+    if ($okModeloLector -and $okAutoLector) { $colorLector = "Green" }
+    Mostrar-Dato "Lector de voz" ("modelo verificado: " + $(if ($okModeloLector) { "si" } else { "no" }) + " | autoarranque: " + $(if ($okAutoLector) { "si" } else { "no" })) $colorLector
+}
+
 # Conexion
 Mostrar-Dato "Conexion" ("blob.handy.computer " + $(if ($netModelo) { "OK" } else { "sin respuesta" }) + " | ollama.com " + $(if ($netOllama) { "OK" } else { "sin respuesta" }))
 
@@ -571,7 +767,7 @@ Mostrar-Dato "Avisos" ([string]$avisos)
 Write-Host ""
 Write-Host "Siguientes pasos:" -ForegroundColor Cyan
 Write-Host " 1. Abre Handy (menu Inicio) y elige tu microfono en Ajustes."
-Write-Host " 2. Prueba los dos atajos: Ctrl+Alt+Espacio (dictado) y Ctrl+Shift+Espacio (asistente)."
+Write-Host " 2. Prueba los tres atajos: Ctrl+Alt+Espacio (dictado), Ctrl+Shift+Espacio (asistente) y Ctrl+Alt+R (lee el portapapeles en voz alta)."
 Write-Host " 3. Para cambiar de modelo de dictado: Handy -> Ajustes -> Modelos."
 Write-Host " 4. El resto (modelo del asistente, prompts, diccionario): seccion Configuracion del README."
 

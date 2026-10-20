@@ -12,6 +12,7 @@
 #   --modelo <modelo>     fuerza el modelo de texto del asistente (p. ej. qwen3:4b-instruct)
 #   --no-abrir            no ofrece abrir Handy al terminar
 #   --metodo <modo>       como instalar Handy: auto | deb | appimage (por defecto: auto)
+#   --sin-lector          no instala el lector de voz (fase 6, Kokoro)
 #
 # Requiere Handy CERRADO (icono de bandeja -> Salir).
 
@@ -26,9 +27,10 @@ ASISTENTE_MODELO=""
 NO_ABRIR=0
 METODO="auto"
 SOLO_DICTADO=0
+SIN_LECTOR=0
 
 uso() {
-    sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # --- Argumentos ---
@@ -37,6 +39,7 @@ while [ $# -gt 0 ]; do
         --simular) SIMULAR=1 ;;
         --no-abrir) NO_ABRIR=1 ;;
         --solo-dictado|--sin-ia) SOLO_DICTADO=1 ;;
+        --sin-lector) SIN_LECTOR=1 ;;
         --modelo) ASISTENTE_MODELO="${2:-}"; shift ;;
         --metodo) METODO="${2:-}"; shift ;;
         -h|--ayuda|--help) uso; exit 0 ;;
@@ -150,6 +153,29 @@ arrancar_ollama() {
     return 1
 }
 
+# --- Lector de voz (Kokoro) ---
+LECTOR_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/asistente-voz-local/lector"
+LECTOR_URL_BASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1"
+# nombre:bytes:sha256
+LECTOR_ARCHIVOS=(
+    "kokoro-v1.0.fp16.onnx:163527961:f3a290d384fbb27966d462905c71a46cef9e5fd00516b40df32a0b4afe77ac96"
+    "voices-v1.0.bin:28214398:bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"
+)
+
+verificar_archivo() { # ruta bytes sha256 -> 0 si tamano y sha256 coinciden
+    [ -f "$1" ] || return 1
+    [ "$(stat -c %s "$1" 2>/dev/null)" = "$2" ] || return 1
+    [ "$(sha256sum "$1" | awk '{print $1}')" = "$3" ] || return 1
+}
+
+buscar_uv() {
+    if command -v uv >/dev/null 2>&1; then command -v uv; return 0; fi
+    [ -x "$HOME/.local/bin/uv" ] && { printf '%s\n' "$HOME/.local/bin/uv"; return 0; }
+    return 1
+}
+
+lector_en_marcha() { pgrep -f "$LECTOR_DIR/lector.py" >/dev/null 2>&1; }
+
 # =====================================================================
 #  Cabecera
 # =====================================================================
@@ -173,7 +199,7 @@ fi
 #  Preflight
 # =====================================================================
 
-paso "[0/5] Comprobaciones previas"
+paso "[0/6] Comprobaciones previas"
 
 # --- SO de 64 bits y distro ---
 ARQ="$(uname -m)"
@@ -230,6 +256,11 @@ else aviso "No se puede acceder a huggingface.co (se intentara el mirror para el
 if [ "$NET_OLLAMA" -eq 1 ]; then ok "Conectividad: ollama.com accesible"
 else aviso "No se puede acceder a ollama.com (no se podran descargar los modelos del asistente)"; fi
 
+if [ "$SIN_LECTOR" -eq 0 ]; then
+    if probar_puerto github.com 443; then ok "Conectividad: github.com accesible"
+    else aviso "No se puede acceder a github.com (no se podra descargar el modelo del lector de voz)"; fi
+fi
+
 # --- Handy NO en ejecucion ---
 if handy_en_ejecucion; then
     printf '\n%sHandy esta ABIERTO.%s\n' "$C_ROJO" "$C_RESET"
@@ -281,7 +312,7 @@ fi
 #  Fase 1: Handy
 # =====================================================================
 
-paso "[1/5] Handy (dictado por voz)"
+paso "[1/6] Handy (dictado por voz)"
 HANDY_EXE=""
 if HANDY_EXE=$(handy_ejecutable); then
     HANDY_VER="$(handy_version 2>/dev/null | head -1)"
@@ -311,7 +342,7 @@ fi
 #  Fase 2: Ollama (instalacion + servidor en marcha)
 # =====================================================================
 
-paso "[2/5] Ollama (IA local)"
+paso "[2/6] Ollama (IA local)"
 SERVIDOR_OLLAMA=0
 if [ "$SOLO_DICTADO" -eq 1 ]; then
     ok "Omitido: modo solo dictado (no se instala ni arranca Ollama)"
@@ -359,7 +390,7 @@ fi
 #  Fase 3: Modelos del asistente
 # =====================================================================
 
-paso "[3/5] Modelos del asistente (Ollama)"
+paso "[3/6] Modelos del asistente (Ollama)"
 MODELOS_PRESENTES=""
 if [ "$SOLO_DICTADO" -eq 1 ]; then
     ok "Omitido: modo solo dictado (no se descargan modelos de IA)"
@@ -388,14 +419,14 @@ done
 #  Fase 4: Modelo de dictado (Cohere Transcribe 2B)
 # =====================================================================
 
-paso "[4/5] Modelo de dictado (Cohere Transcribe 2B, ~1,7 GB)"
+paso "[4/6] Modelo de dictado (Cohere Transcribe 2B, ~1,7 GB)"
 descargar_modelo_dictado || true
 
 # =====================================================================
 #  Fase 5: Configuracion de Handy
 # =====================================================================
 
-paso "[5/5] Configuracion de Handy"
+paso "[5/6] Configuracion de Handy"
 
 if handy_en_ejecucion; then
     printf '  %sHandy esta en ejecucion.%s\n' "$C_ROJO" "$C_RESET"
@@ -447,6 +478,159 @@ else
         ok "Configuracion aplicada en $CFG"
     else
         fallo "No se ha podido aplicar la configuracion de Handy"
+    fi
+fi
+
+# =====================================================================
+#  Fase 6: Lector de voz (Kokoro)
+# =====================================================================
+
+paso "[6/6] Lector de voz (Kokoro, ~0,7 GB entre modelo y entorno Python)"
+
+LECTOR_PY="$LECTOR_DIR/.venv/bin/python"
+LECTOR_DESKTOP="$HOME/.config/autostart/lector-voz.desktop"
+
+if [ "$SIN_LECTOR" -eq 1 ]; then
+    ok "Omitido: --sin-lector (no se instala el lector de voz)"
+elif [ "$SIMULAR" -eq 1 ]; then
+    simula "pararia el lector si esta en marcha y copiaria lector/*.py y requirements.txt a $LECTOR_DIR"
+    simula "copiaria config/lector.json solo si no existe ya en $LECTOR_DIR"
+    if UV_SIM=$(buscar_uv); then ok "uv disponible ($UV_SIM)"
+    else simula "instalaria uv: curl -LsSf https://astral.sh/uv/install.sh | sh"; fi
+    if [ -x "$LECTOR_PY" ]; then ok "Entorno Python 3.12 ya creado"
+    else simula "crearia el entorno: uv venv -p 3.12 $LECTOR_DIR/.venv"; fi
+    simula "instalaria las dependencias: uv pip install -p <python del entorno> -r requirements.txt"
+    for entrada in "${LECTOR_ARCHIVOS[@]}"; do
+        IFS=: read -r lnom lbytes lsha <<< "$entrada"
+        if verificar_archivo "$LECTOR_DIR/modelo/$lnom" "$lbytes" "$lsha"; then
+            ok "$lnom ya presente y verificado (sha256 y tamano)"
+        else
+            simula "descargaria $lnom ($lbytes bytes) de github.com; verifica sha256 y tamano"
+        fi
+    done
+    simula "crearia el autoarranque: $LECTOR_DESKTOP"
+    simula "arrancaria el lector en segundo plano"
+else
+    # 2. Parar el lector si esta en marcha
+    if lector_en_marcha; then
+        pkill -f "$LECTOR_DIR/lector.py" 2>/dev/null
+        sleep 1
+        ok "Lector en marcha parado (se reiniciara al terminar)"
+    fi
+
+    # 3. Copiar archivos (la config solo si no existe: se conservan los cambios del usuario)
+    LECTOR_COPIA_OK=0
+    if mkdir -p "$LECTOR_DIR/modelo" \
+        && cp -f "$REPO_ROOT"/lector/*.py "$REPO_ROOT/lector/requirements.txt" "$LECTOR_DIR/"; then
+        LECTOR_COPIA_OK=1
+        if [ ! -f "$LECTOR_DIR/lector.json" ]; then
+            cp "$REPO_ROOT/config/lector.json" "$LECTOR_DIR/lector.json" && ok "Config del lector creada (lector.json)"
+        else
+            ok "Config del lector conservada (ya existia lector.json)"
+        fi
+        ok "Archivos del lector copiados a $LECTOR_DIR"
+    else
+        fallo "No se han podido copiar los archivos del lector a $LECTOR_DIR"
+    fi
+
+    # 4. uv + entorno Python 3.12 (kokoro-onnx exige Python < 3.14)
+    LECTOR_VENV_OK=0
+    if [ "$LECTOR_COPIA_OK" -eq 1 ]; then
+        UV=""
+        if ! UV=$(buscar_uv); then
+            printf '  Instalando uv...\n'
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            UV=$(buscar_uv) || UV=""
+        fi
+        if [ -z "$UV" ]; then
+            fallo "No se encuentra uv (instalalo con: curl -LsSf https://astral.sh/uv/install.sh | sh) y repite el instalador"
+        else
+            ok "uv disponible ($UV)"
+            if [ ! -x "$LECTOR_PY" ]; then
+                printf '  Creando el entorno Python 3.12 (puede descargar Python)...\n'
+                "$UV" venv -p 3.12 "$LECTOR_DIR/.venv"
+            fi
+            if [ -x "$LECTOR_PY" ]; then
+                printf '  Instalando dependencias del lector...\n'
+                if "$UV" pip install -p "$LECTOR_PY" -r "$LECTOR_DIR/requirements.txt"; then
+                    ok "Entorno Python del lector listo"
+                    LECTOR_VENV_OK=1
+                else
+                    fallo "No se han podido instalar las dependencias del lector"
+                fi
+            else
+                fallo "No se ha podido crear el entorno Python 3.12 del lector"
+            fi
+        fi
+    fi
+
+    # 5. Modelo (2 archivos) con sha256 y tamano
+    LECTOR_MODELO_OK=0
+    if [ "$LECTOR_COPIA_OK" -eq 1 ]; then
+        LECTOR_MODELO_OK=1
+        for entrada in "${LECTOR_ARCHIVOS[@]}"; do
+            IFS=: read -r lnom lbytes lsha <<< "$entrada"
+            destino="$LECTOR_DIR/modelo/$lnom"
+            if verificar_archivo "$destino" "$lbytes" "$lsha"; then
+                ok "$lnom ya presente y verificado (sha256 y tamano)"
+                continue
+            fi
+            if [ -f "$destino" ]; then
+                aviso "$lnom no coincide (sha256 o tamano): se descarga de nuevo"
+                rm -f "$destino"
+            fi
+            printf '  Descargando %s...\n' "$lnom"
+            if curl -L --fail --retry 3 -o "$destino" "$LECTOR_URL_BASE/$lnom" && verificar_archivo "$destino" "$lbytes" "$lsha"; then
+                ok "$lnom descargado y verificado"
+            else
+                rm -f "$destino"
+                fallo "No se ha podido descargar $lnom (repite el instalador con conexion)"
+                LECTOR_MODELO_OK=0
+            fi
+        done
+    fi
+
+    # 6. Autoarranque
+    LECTOR_AUTO_OK=0
+    if [ "$LECTOR_VENV_OK" -eq 1 ]; then
+        if mkdir -p "$HOME/.config/autostart" && cat > "$LECTOR_DESKTOP" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Lector de voz
+Comment=Lector de voz local (Kokoro)
+Exec=$LECTOR_PY $LECTOR_DIR/lector.py
+Path=$LECTOR_DIR
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
+        then
+            LECTOR_AUTO_OK=1
+            ok "Autoarranque creado ($LECTOR_DESKTOP)"
+        else
+            fallo "No se ha podido crear el autoarranque del lector"
+        fi
+    fi
+
+    # 8. Dependencias del sistema (aviso, no bloquea)
+    if ! ldconfig -p 2>/dev/null | grep -q libportaudio; then
+        aviso "Falta libportaudio2 (el lector no podra sonar). Instalala con: sudo apt install libportaudio2"
+    fi
+    if ! command -v xclip >/dev/null 2>&1 && ! command -v xsel >/dev/null 2>&1 && ! command -v wl-paste >/dev/null 2>&1; then
+        aviso "Falta xclip, xsel o wl-paste (el lector no podra leer el portapapeles). Instala uno con: sudo apt install xclip"
+    fi
+    if [ "${XDG_SESSION_TYPE:-}" = "wayland" ]; then
+        aviso "Sesion Wayland: los atajos globales del lector solo funcionan en X11. Entra con una sesion Xorg (o asigna un atajo del sistema que ejecute: $LECTOR_PY $LECTOR_DIR/lector.py --probar)"
+    fi
+
+    # 7. Arrancarlo en segundo plano
+    if [ "$LECTOR_AUTO_OK" -eq 1 ] && [ "$LECTOR_MODELO_OK" -eq 1 ]; then
+        nohup setsid "$LECTOR_PY" "$LECTOR_DIR/lector.py" >/dev/null 2>&1 &
+        sleep 6
+        if lector_en_marcha; then
+            ok "Lector en marcha (atajo Ctrl+Alt+R)"
+        else
+            aviso "El lector no parece estar en marcha: mira $LECTOR_DIR/lector.log"
+        fi
     fi
 fi
 
@@ -508,12 +692,28 @@ else
     dato "Settings" "NO aplicado"
 fi
 
+# Lector de voz
+if [ "$SIN_LECTOR" -eq 1 ]; then
+    dato "Lector de voz" "omitido (--sin-lector)"
+else
+    LECTOR_MODELO_FIN="no"
+    LECTOR_ARCHIVOS_OK=1
+    for entrada in "${LECTOR_ARCHIVOS[@]}"; do
+        IFS=: read -r lnom lbytes lsha <<< "$entrada"
+        verificar_archivo "$LECTOR_DIR/modelo/$lnom" "$lbytes" "$lsha" || LECTOR_ARCHIVOS_OK=0
+    done
+    [ "$LECTOR_ARCHIVOS_OK" -eq 1 ] && LECTOR_MODELO_FIN="si"
+    LECTOR_AUTO_FIN="no"
+    [ -f "$HOME/.config/autostart/lector-voz.desktop" ] && LECTOR_AUTO_FIN="si"
+    dato "Lector de voz" "modelo verificado: $LECTOR_MODELO_FIN | autoarranque: $LECTOR_AUTO_FIN"
+fi
+
 dato "Fallos" "$FALLOS"
 dato "Avisos" "$AVISOS"
 
 printf '\n%sSiguientes pasos:%s\n' "$C_CYAN" "$C_RESET"
 printf ' 1. Abre Handy y elige tu microfono en Ajustes.\n'
-printf ' 2. Prueba los dos atajos: Ctrl+Alt+Espacio (dictado) y Ctrl+Shift+Espacio (asistente).\n'
+printf ' 2. Prueba los tres atajos: Ctrl+Alt+Espacio (dictado), Ctrl+Shift+Espacio (asistente) y Ctrl+Alt+R (lee el portapapeles en voz alta).\n'
 printf ' 3. Para cambiar de modelo de dictado: Handy -> Ajustes -> Modelos.\n'
 printf ' 4. El resto (modelo del asistente, prompts, diccionario): seccion Configuracion del README.\n'
 

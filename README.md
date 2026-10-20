@@ -7,8 +7,8 @@ Dictado por voz con IA **100% local** para Windows y Linux: hablas y obtienes tr
 1. **Consigue la carpeta**: clona el repositorio (`git clone …`) o descarga el ZIP y descomprímelo.
 2. **Doble clic en `Instalar.cmd`** (está en la raíz de la carpeta).
 3. **Acepta el aviso de Windows (UAC)**: el instalador pide permisos de administrador porque Ollama se instala a nivel de sistema. Si ya ejecutas como administrador, no aparece aviso.
-4. **Espera**: se descargan unos **11 GB** — Handy (~0,3 GB), el modelo de dictado Whisper Turbo (~1,5 GB, el que transcribe completos los dictados largos), el modelo de texto del asistente (~7 GB) y el modelo ligero de respaldo (~2,5 GB). Según tu conexión puede tardar bastante.
-5. **Al terminar**: abre Handy, elige tu micrófono en Ajustes y prueba los dos atajos (`Ctrl + Alt + Espacio` y `Ctrl + Shift + Espacio`). El instalador te ofrece abrirlo al final.
+4. **Espera**: se descargan unos **11 GB** — Handy (~0,3 GB), el modelo de dictado Whisper Turbo (~1,5 GB, el que transcribe completos los dictados largos), el modelo de texto del asistente (~7 GB) y el modelo ligero de respaldo (~2,5 GB), más el lector de voz (~0,2 GB de modelo y ~0,5 GB de entorno Python). Según tu conexión puede tardar bastante.
+5. **Al terminar**: abre Handy, elige tu micrófono en Ajustes y prueba los tres atajos (`Ctrl + Alt + Espacio`, `Ctrl + Shift + Espacio` y `Ctrl + Alt + R`). El instalador te ofrece abrirlo al final.
 
 Puedes ejecutarlo las veces que quieras: cada paso comprueba antes de actuar y no repite lo que ya está hecho.
 
@@ -40,6 +40,7 @@ bash scripts/install.sh --modelo qwen3:4b-instruct   # forzar el modelo ligero d
 bash scripts/install.sh --metodo appimage            # instalar Handy sin sudo (en ~/.local/bin/handy)
 bash scripts/install.sh --metodo deb                 # forzar la instalacion del .deb con apt
 bash scripts/install.sh --no-abrir                   # no ofrecer abrir Handy al terminar
+bash scripts/install.sh --sin-lector                 # no instalar el lector de voz (fase 6)
 ```
 
 **Sin GPU NVIDIA no hace falta la IA**: si el instalador no detecta `nvidia-smi`, activa automáticamente el **modo solo dictado** (no descarga ni requiere Ollama). Si quieres el asistente en CPU igualmente, pásale `--modelo qwen3:4b-instruct`.
@@ -60,12 +61,13 @@ bash scripts/install.sh --no-abrir                   # no ofrecer abrir Handy al
 
 - Distro de 64 bits compatible con `.deb` (Linux Mint, Ubuntu, Debian) o cualquier distro usando `--metodo appimage`.
 - **~20 GB libres** e internet. `python3` y `curl` (vienen de serie).
+- Lector de voz (opcional): `libportaudio2` y `xclip` (o `xsel`/`wl-paste`); los atajos globales del lector solo funcionan en **X11**, no en Wayland.
 - GPU **NVIDIA opcional**: sin ella el instalador usa el modelo ligero `qwen3:4b-instruct`.
 
 ### Requisitos
 
 - **Windows 10/11 de 64 bits**.
-- **~20 GB libres** en el disco del sistema (mínimo ~15 GB) e internet.
+- **~20 GB libres** en el disco del sistema (mínimo ~15 GB) e internet. El lector de voz añade ~0,7 GB (modelo ~0,2 GB + entorno Python ~0,5 GB).
 - GPU **NVIDIA opcional**: acelera el dictado y el asistente. Sin GPU suficiente, el instalador elige automáticamente el modelo ligero.
 
 ### Qué hace el instalador
@@ -78,6 +80,7 @@ bash scripts/install.sh --no-abrir                   # no ofrecer abrir Handy al
 | 3. Modelos del asistente | Descarga `gemma4:e4b` (estándar) y `qwen3:4b-instruct` (ligero) |
 | 4. Modelo de dictado | Descarga Whisper Turbo (`ggml-large-v3-turbo.bin`, ~1,5 GB) en la carpeta de modelos de Handy y verifica sha256 y tamaño |
 | 5. Configuración | PC nuevo: copia la config del repo. PC ya configurado: **merge de 4 campos** (modelo de dictado, diccionario, umbral del corrector y buffer) conservando tu micrófono, atajos y prompts |
+| 6. Lector de voz | Instala `uv` y un entorno Python 3.12, copia el lector, descarga el modelo Kokoro (sha256 y tamaño), crea el autoarranque y lo arranca. Se salta con `-SinLector` |
 
 **El asistente estándar es `gemma4:e4b`.** En PCs sin GPU NVIDIA suficiente (menos de 8 GB de VRAM) el instalador usa y deja configurado automáticamente `qwen3:4b-instruct`.
 
@@ -96,6 +99,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -AsistenteModelo 
 
 # no ofrecer abrir Handy al terminar
 powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -NoAbrir
+
+# no instalar el lector de voz (fase 6)
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -SinLector
 ```
 
 `Instalar.cmd` acepta los mismos argumentos: `Instalar.cmd -Simular`.
@@ -111,12 +117,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -NoAbrir
 - **El antivirus bloquea** la descarga o la instalación: permite la carpeta del repo (o `powershell`/`curl`) y repite.
 - **Nada se rompe por repetir**: los scripts comprueban cada paso antes de actuar.
 
-## Los dos atajos
+## Los tres atajos
 
 | Atajo | Qué hace |
 |---|---|
 | `Ctrl + Alt + Espacio` | **Dictado puro**: transcribe lo que dices (el texto aparece al terminar la grabación) y lo pega donde tengas el cursor. |
 | `Ctrl + Shift + Espacio` | **Asistente IA local**: analiza lo dictado. Si es información → resumen. Si es una petición ("escríbeme un correo formal sobre...", "explícame X", "hazme una lista de...") → la ejecuta y pega el resultado. |
+| `Ctrl + Alt + R` | **Lector de voz**: lee en voz alta el portapapeles (el último texto copiado o dictado). Otra pulsación lo para. Si es Markdown (p. ej. un chat de un agente de IA), omite bloques de código, URL, líneas de herramientas y tablas largas. |
 
 `Esc` cancela una grabación en curso.
 
@@ -128,6 +135,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -NoAbrir
 |---|---|---|
 | [Handy](https://handy.computer) | Captura de voz + transcripción + pegado | Whisper Turbo (`ggml-large-v3-turbo.bin`, GPU vía Vulkan) |
 | [Ollama](https://ollama.com) | Motor de IA de texto local | gemma4:e4b (resúmenes, correos, explicaciones...) |
+| [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) | Lector de voz (texto a voz, en CPU) | Kokoro-82M fp16 (`kokoro-v1.0.fp16.onnx`) |
 
 ## Ejemplos de uso con `Ctrl + Shift + Espacio`
 
@@ -172,6 +180,17 @@ Para cambiarlo: **Handy → Ajustes → Modelos**. Alternativas ya disponibles y
 - **Buffer de audio**: `extra_recording_buffer_ms = 250` graba 250 ms extra al soltar el atajo para
   no cortar la última palabra (el detector de voz VAD descarta ese silencio añadido).
 
+### Lector de voz
+
+El lector (`Ctrl + Alt + R`) queda residente en segundo plano, arranca con el inicio de sesión y corre en CPU (la GPU la usa Ollama). Se instala en `%LOCALAPPDATA%\asistente-voz-local\lector` (Windows) o `~/.local/share/asistente-voz-local/lector` (Linux).
+
+- **Config**: `lector.json` en esa carpeta. Campos: `atajo`, `voz` (`em_alex` por defecto; también `ef_dora`, `em_santa`) y `velocidad` (1.0 = normal). **Reinicia el lector** tras cambiarla (ciérralo desde el Administrador de tareas o vuelve a iniciar sesión). El instalador no sobrescribe tu `lector.json`.
+- **Píldora visual**: mientras lee aparece abajo en el centro una píldora con el mismo diseño que la de Handy (gris mientras prepara la voz, rosa con barras que siguen la voz mientras habla). Clic en ella o el atajo otra vez para parar. No roba el foco de la ventana en la que estés.
+- **Memoria**: el modelo de voz está siempre cargado (~450 MB de RAM, sin GPU), a la vez que el de dictado: no se descarga ni se recarga entre lecturas.
+- **Log**: `lector.log` en la misma carpeta.
+- **Probar sin atajo**: `<carpeta>\.venv\Scripts\python.exe <carpeta>\lector.py --probar "hola"`.
+- La calidad del español de Kokoro es limitada: es correcta para escuchar un texto, no una voz de locutor.
+
 ### Otros ajustes
 
 - **Atajos**: Handy → Ajustes → Atajos. Haz clic en el atajo y pulsa la combinación nueva.
@@ -201,17 +220,19 @@ asistente-voz-local/
 ├── Instalar.sh                  # Linux: ./Instalar.sh (mismas opciones que install.sh)
 ├── README.md
 ├── config/handy-settings.json   # configuración de Handy lista para aplicar
+├── config/lector.json           # configuración del lector de voz (atajo, voz, velocidad)
+├── lector/                      # lector de voz (Kokoro): lector.py, leer_md.py (Markdown), pildora.py (visual)
 ├── docs/specs/                  # especificaciones de los cambios
 ├── prompts/                     # textos de los prompts (referencia/edición)
 │   ├── asistente.md
 │   ├── correo-formal.md
 │   └── texto-coloquial.md
 └── scripts/
-    ├── install.ps1              # Windows: instalador (PC nuevo); -Simular/-AsistenteModelo/-NoAbrir
+    ├── install.ps1              # Windows: instalador (PC nuevo); -Simular/-AsistenteModelo/-NoAbrir/-SinLector
     ├── settings-merge.ps1       # Windows: merge de config compartido (funciones)
     ├── patch-config.ps1         # Windows: PC ya configurado: solo modelo/diccionario/umbral/buffer
     ├── apply-config.ps1         # Windows: reemplaza toda la configuración de Handy
-    ├── install.sh               # Linux: instalador (PC nuevo); --simular/--modelo/--no-abrir/--metodo
+    ├── install.sh               # Linux: instalador (PC nuevo); --simular/--modelo/--no-abrir/--metodo/--sin-lector
     ├── comun.sh                 # Linux: funciones y constantes compartidas
     ├── handy-config.py          # Linux: merge de config (equivalente a settings-merge.ps1)
     ├── patch-config.sh          # Linux: PC ya configurado: solo modelo/diccionario/buffer
@@ -238,6 +259,9 @@ asistente-voz-local/
 - **Aparece un término técnico en medio de una frase que no lo pedía**: es el corrector difuso actuando
   sobre un término que hayas añadido al diccionario. Aquí ya va con umbral estricto (`0.05`); si aun
   así ocurre, quita ese término del diccionario y avísalo.
+- **El lector no habla**: mira `lector.log` (carpeta del lector). Causas típicas: falta el modelo (repite el instalador), el lector no está en marcha (ábrelo desde el acceso directo *Lector de voz* de la carpeta Inicio) o el portapapeles no tiene texto (suena un pitido).
+- **El atajo del lector no responde / "ya está en uso"**: otra app tiene `Ctrl+Alt+R` o hay otro lector abierto. Cambia `atajo` en `lector.json` y reinicia el lector.
+- **Linux: el lector no funciona en Wayland**: los atajos globales solo van en X11; inicia sesión con Xorg. Si falta sonido: `sudo apt install libportaudio2`; si no lee el portapapeles: `sudo apt install xclip`.
 - **Quiero la vista previa en vivo mientras hablo**: cambia a `Nemotron Streaming 3.5` en Handy → Ajustes → Modelos (a cambio de bastante menos precisión).
 
 ## Reutilizar en otro ordenador

@@ -4,7 +4,7 @@ title Asistente de voz local - Instalador
 
 rem Instalador en 1 clic - Asistente de voz local (Handy + Ollama)
 rem Doble clic para instalar todo. Windows pedira permisos de administrador (UAC).
-rem Opciones extra: pasa los mismos argumentos que install.ps1 (-Simular, -AsistenteModelo, -NoAbrir).
+rem Opciones extra: pasa los mismos argumentos que install.ps1 (-Simular, -AsistenteModelo, -NoAbrir, -SinLector).
 
 set "PS1=%~dp0scripts\install.ps1"
 
