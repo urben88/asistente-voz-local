@@ -1,0 +1,12 @@
+# Motores de voz de alta calidad (GPU). NO se instalan por defecto: pesan ~5 GB
+# (torch + modelos) y solo tienen sentido si vas a usar Chatterbox o XTTS.
+#
+# Instalar con el Python del lector:
+#   uv pip install -p "<carpeta del lector>\.venv\Scripts\python.exe" -r requirements-calidad.txt
+#
+# Chatterbox: la voz más natural en español (GPU ~3,2 GB, genera 1,3x más lento que habla).
+# XTTS-v2: 58 voces y 17 idiomas (GPU ~1,8 GB, 1,6x más rápido que el tiempo real).
+torch>=2.6,<2.8
+torchaudio>=2.6,<2.8
+chatterbox-tts>=0.1.7,<1
+coqui-tts>=0.28,<1

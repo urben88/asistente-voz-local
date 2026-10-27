@@ -7,7 +7,7 @@
 #                              (no instala, no descarga, no copia y no toca la configuracion)
 #   -AsistenteModelo <modelo>  fuerza el modelo de texto del asistente (p. ej. qwen3:4b-instruct)
 #   -NoAbrir                   no ofrece abrir Handy al terminar
-#   -SinLector                 no instala el lector de voz (fase 6, Kokoro)
+#   -SinLector                 no instala el lector de voz ni el panel (fases 6 y 7)
 #
 # Requiere Handy CERRADO (bandeja del sistema -> Salir).
 
@@ -145,7 +145,7 @@ if (-not (Test-Path $repoConfig)) {
 #  Preflight (nada se instala hasta terminar estas comprobaciones)
 # =====================================================================
 
-Mostrar-Paso "[0/6] Comprobaciones previas"
+Mostrar-Paso "[0/7] Comprobaciones previas"
 
 # --- Sistema operativo ---
 $verSo = [Environment]::OSVersion.Version
@@ -212,8 +212,12 @@ if (-not $SinLector) {
     $netGithub = Probar-Puerto -HostName "github.com"
     if ($netGithub) { Mostrar-Ok "Conectividad: github.com accesible" }
     else { Mostrar-Aviso "No se puede acceder a github.com (no se podra descargar el modelo del lector de voz)" }
+    $netHuggingFace = Probar-Puerto -HostName "huggingface.co"
+    if ($netHuggingFace) { Mostrar-Ok "Conectividad: huggingface.co accesible (voces Piper)" }
+    else { Mostrar-Aviso "No se puede acceder a huggingface.co (no se podra descargar la voz por defecto del panel)" }
 } else {
     $netGithub = $false
+    $netHuggingFace = $false
 }
 
 # --- Handy NO en ejecucion ---
@@ -263,7 +267,7 @@ if ($AsistenteModelo -ne $modeloLigero) { $modelosAsistente += $modeloLigero }
 #  Fase 1: Handy
 # =====================================================================
 
-Mostrar-Paso "[1/6] Handy (dictado por voz)"
+Mostrar-Paso "[1/7] Handy (dictado por voz)"
 $handyExe = ""
 foreach ($candidato in @((Join-Path $env:LOCALAPPDATA "Handy\handy.exe"), (Join-Path $env:ProgramFiles "Handy\handy.exe"))) {
     if (Test-Path $candidato) { $handyExe = $candidato; break }
@@ -306,7 +310,7 @@ if ($handyExe -ne "") {
 #  Fase 2: Ollama (instalacion + servidor en marcha)
 # =====================================================================
 
-Mostrar-Paso "[2/6] Ollama (IA local)"
+Mostrar-Paso "[2/7] Ollama (IA local)"
 $ollamaCmd = Get-Command ollama -ErrorAction SilentlyContinue
 $ollamaApp = Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama app.exe"
 
@@ -360,7 +364,7 @@ if ($servidorOllama) {
 #  Fase 3: Modelos del asistente
 # =====================================================================
 
-Mostrar-Paso "[3/6] Modelos del asistente (Ollama)"
+Mostrar-Paso "[3/7] Modelos del asistente (Ollama)"
 $modelosPresentes = Obtener-ModelosOllama
 
 foreach ($modelo in $modelosAsistente) {
@@ -386,7 +390,7 @@ foreach ($modelo in $modelosAsistente) {
 #  Fase 4: Modelo de dictado (Whisper Turbo)
 # =====================================================================
 
-Mostrar-Paso "[4/6] Modelo de dictado (Whisper Turbo, ~1,5 GB)"
+Mostrar-Paso "[4/7] Modelo de dictado (Whisper Turbo, ~1,5 GB)"
 # Handy guarda los modelos de dictado en %APPDATA%\com.pais.handy\models\
 $modelosDir = Join-Path $env:APPDATA "com.pais.handy\models"
 $modeloFile = Join-Path $modelosDir "ggml-large-v3-turbo.bin"
@@ -452,7 +456,7 @@ if (-not $modeloOk) {
 #  Fase 5: Configuracion de Handy
 # =====================================================================
 
-Mostrar-Paso "[5/6] Configuracion de Handy"
+Mostrar-Paso "[5/7] Configuracion de Handy"
 
 # Handy debe estar cerrado: si esta abierto, al salir reescribe el fichero y perderia el cambio
 $procHandy = Get-Process handy -ErrorAction SilentlyContinue
@@ -507,7 +511,7 @@ if ($Simular) {
 #  Fase 6: Lector de voz (Kokoro)
 # =====================================================================
 
-Mostrar-Paso "[6/6] Lector de voz (Kokoro, ~0,7 GB entre modelo y entorno Python)"
+Mostrar-Paso "[6/7] Lector de voz (Kokoro, ~0,7 GB entre modelo y entorno Python)"
 
 $lectorDir = Join-Path $env:LOCALAPPDATA "asistente-voz-local\lector"
 $lectorModeloDir = Join-Path $lectorDir "modelo"
@@ -549,7 +553,7 @@ function Buscar-ProcesosLector {
 }
 
 if ($SinLector) {
-    Mostrar-Ok "Omitido: -SinLector (no se instala el lector de voz)"
+    Mostrar-Ok "Omitido: -SinLector (no se instala el lector de voz ni el panel)"
 } elseif ($Simular) {
     Mostrar-Simulacion ("pararia el lector si esta en marcha y copiaria lector\*.py y requirements.txt a " + $lectorDir)
     Mostrar-Simulacion ("copiaria config\lector.json solo si no existe ya en " + $lectorDir)
@@ -647,11 +651,23 @@ if ($SinLector) {
     }
 
     # 6. Autoarranque (acceso directo en la carpeta Inicio)
+    # Se usa el pythonw.exe del Python base (sin consola): el pythonw.exe del venv es un
+    # lanzador que abre python.exe con ventana de consola, y al cerrarla se cerraba el lector.
+    # lector.py carga solo las librerias de .venv cuando se arranca asi.
+    $lectorPywBase = $lectorPyw
+    $cfgVenv = Join-Path $lectorVenv "pyvenv.cfg"
+    if (Test-Path $cfgVenv) {
+        $lineaHome = Get-Content $cfgVenv | Where-Object { $_ -match "^home\s*=" } | Select-Object -First 1
+        if ($lineaHome) {
+            $pywBase = Join-Path ($lineaHome -replace "^home\s*=\s*", "").Trim() "pythonw.exe"
+            if (Test-Path $pywBase) { $lectorPywBase = $pywBase }
+        }
+    }
     if ($lectorVenvOk) {
         try {
             $sh = New-Object -ComObject WScript.Shell
             $lnk = $sh.CreateShortcut($lectorLnk)
-            $lnk.TargetPath = $lectorPyw
+            $lnk.TargetPath = $lectorPywBase
             $lnk.Arguments = '"' + (Join-Path $lectorDir "lector.py") + '"'
             $lnk.WorkingDirectory = $lectorDir
             $lnk.Description = "Lector de voz local (Kokoro)"
@@ -666,11 +682,175 @@ if ($SinLector) {
     # 7. Arrancarlo a traves de Explorer: asi corre SIN privilegios de administrador
     if ($lectorAuto -and $lectorModeloOk) {
         Start-Process explorer.exe -ArgumentList ('"' + $lectorLnk + '"')
-        Start-Sleep -Seconds 8
-        if ((Buscar-ProcesosLector).Count -gt 0) {
+        $enMarcha = $false
+        for ($i = 0; $i -lt 20 -and -not $enMarcha; $i++) {
+            Start-Sleep -Seconds 1
+            $enMarcha = @(Buscar-ProcesosLector).Count -gt 0
+        }
+        if ($enMarcha) {
             Mostrar-Ok "Lector en marcha (atajo Ctrl+Alt+R)"
         } else {
             Mostrar-Aviso ("El lector no parece estar en marcha: mira " + (Join-Path $lectorDir "lector.log"))
+        }
+    }
+}
+
+# =====================================================================
+#  Fase 7: Panel de voz (Piper + bandeja)
+# =====================================================================
+
+Mostrar-Paso "[7/7] Panel de voz (Piper, voz es_ES-davefx-medium ~63 MB)"
+
+$baseDir = Join-Path $env:LOCALAPPDATA "asistente-voz-local"
+$panelRepo = Join-Path $repoRoot "panel"
+$panelDir = Join-Path $baseDir "panel"
+$panelCfgDir = Join-Path $baseDir "config"
+$estadoJson = Join-Path $baseDir "estado.json"
+$panelLnk = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\Panel de voz.lnk"
+$vozPiperDefecto = "es_ES-davefx-medium"
+$vocesPiperDir = Join-Path $lectorDir "voces\piper"
+
+function Buscar-ProcesosPanel {
+    return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.CommandLine -and $_.CommandLine.Contains("panel.py") -and
+        $_.CommandLine.IndexOf($panelDir, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+    })
+}
+
+function Test-VozPiper {
+    param([string]$Nombre)
+    return ((Test-Path (Join-Path $vocesPiperDir ($Nombre + ".onnx"))) -and
+            (Test-Path (Join-Path $vocesPiperDir ($Nombre + ".onnx.json"))))
+}
+
+if ($SinLector) {
+    Mostrar-Ok "Omitido: -SinLector (no se instalan el lector ni el panel de voz)"
+} elseif ($Simular) {
+    Mostrar-Simulacion ("pararia el panel si esta en marcha y copiaria panel\*.py a " + $panelDir)
+    Mostrar-Simulacion ("copiaria config\panel.json a " + (Join-Path $panelCfgDir "panel.json"))
+    if (Test-Path $lectorPy) {
+        Mostrar-Simulacion "instalaria en el entorno del lector: piper-tts>=1.8,<2 y pystray>=0.19,<1"
+    } else {
+        Mostrar-Aviso ("No existe el entorno Python del lector (" + $lectorVenv + "): la fase 6 debe ejecutarse antes")
+    }
+    if (Test-VozPiper $vozPiperDefecto) {
+        Mostrar-Ok ("Voz " + $vozPiperDefecto + " ya instalada")
+    } else {
+        Mostrar-Simulacion ("descargaria la voz " + $vozPiperDefecto + " a " + $vocesPiperDir + " (huggingface.co)")
+    }
+    Mostrar-Simulacion ("crearia/reemplazaria el autoarranque: " + $panelLnk)
+    Mostrar-Simulacion ("borraria el autoarranque del lector: " + $lectorLnk)
+    Mostrar-Simulacion "arrancaria el panel (sin privilegios de administrador) a traves del acceso directo"
+} else {
+    # 1. Parar el panel si esta en marcha
+    $paradosPanel = Buscar-ProcesosPanel
+    foreach ($p in $paradosPanel) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+    if ($paradosPanel.Count -gt 0) { Mostrar-Ok "Panel en marcha parado (se reiniciara al terminar)" }
+
+    # 2. Copiar panel\*.py y config\panel.json
+    try {
+        New-Item -ItemType Directory -Force -Path $panelDir, $panelCfgDir | Out-Null
+        foreach ($f in @(Get-ChildItem -Path $panelRepo -Filter "*.py" -File)) {
+            Copy-Item $f.FullName (Join-Path $panelDir $f.Name) -Force -ErrorAction Stop
+        }
+        Copy-Item (Join-Path $repoRoot "config\panel.json") (Join-Path $panelCfgDir "panel.json") -Force -ErrorAction Stop
+        Mostrar-Ok ("Archivos del panel copiados a " + $panelDir)
+    } catch {
+        Mostrar-Fallo ("No se han podido copiar los archivos del panel: " + $_.Exception.Message)
+    }
+
+    # 3. Dependencias en el entorno del lector (piper-tts ya venia en requirements.txt)
+    $panelVenvOk = $false
+    if (-not (Test-Path $lectorPy)) {
+        Mostrar-Fallo ("No existe el entorno Python del lector (" + $lectorVenv + "): ejecuta antes la fase 6 y repite")
+    } else {
+        $uvPanel = Buscar-Uv
+        if ($uvPanel -eq "") {
+            Mostrar-Fallo "No se encuentra uv (instalalo con: winget install astral-sh.uv) y repite el instalador"
+        } else {
+            Write-Host "  Instalando dependencias del panel (piper-tts y pystray)..."
+            & $uvPanel pip install -p $lectorPy "piper-tts>=1.8,<2" "pystray>=0.19,<1"
+            if ($LASTEXITCODE -eq 0) {
+                Mostrar-Ok "Dependencias del panel instaladas en el entorno del lector"
+                $panelVenvOk = $true
+            } else {
+                Mostrar-Fallo "No se han podido instalar piper-tts y pystray en el entorno del lector"
+            }
+        }
+    }
+
+    # 4. Voz por defecto: solo si falta el .onnx o el .onnx.json
+    if (Test-VozPiper $vozPiperDefecto) {
+        Mostrar-Ok ("Voz " + $vozPiperDefecto + " ya instalada")
+    } elseif (Test-Path $lectorPy) {
+        New-Item -ItemType Directory -Force -Path $vocesPiperDir | Out-Null
+        Write-Host ("  Descargando la voz " + $vozPiperDefecto + " (huggingface.co)...")
+        & $lectorPy -m piper.download_voices --download-dir $vocesPiperDir $vozPiperDefecto
+        if (Test-VozPiper $vozPiperDefecto) {
+            Mostrar-Ok ("Voz " + $vozPiperDefecto + " instalada")
+        } else {
+            Mostrar-Aviso ("No se ha podido descargar la voz " + $vozPiperDefecto + " (sin conexion a huggingface.co): el panel arrancara igualmente y podras instalarla desde 'Instalar voces...'")
+        }
+    } else {
+        Mostrar-Aviso ("No se ha podido descargar la voz " + $vozPiperDefecto + ": falta el entorno del lector")
+    }
+
+    # 5. estado.json inicial (plug and play: el lector arranca encendido con la voz basica)
+    if (-not (Test-Path $estadoJson)) {
+        $epochEstado = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        $jsonEstado = '{"lector": true, "actualizado": ' + $epochEstado + '}'
+        try {
+            [IO.File]::WriteAllText($estadoJson, $jsonEstado, (New-Object System.Text.UTF8Encoding($false)))
+            Mostrar-Ok "Estado inicial creado (estado.json: lector encendido)"
+        } catch {
+            Mostrar-Aviso ("No se ha podido crear estado.json: " + $_.Exception.Message)
+        }
+    } else {
+        Mostrar-Ok "Estado del panel conservado (ya existia estado.json)"
+    }
+
+    # 6. Autoarranque: Panel de voz.lnk con el pythonw base (mismo motivo que en la fase 6)
+    if ($panelVenvOk) {
+        $panelPywBase = $lectorPyw
+        $cfgVenvPanel = Join-Path $lectorVenv "pyvenv.cfg"
+        if (Test-Path $cfgVenvPanel) {
+            $lineaHomePanel = Get-Content $cfgVenvPanel | Where-Object { $_ -match "^home\s*=" } | Select-Object -First 1
+            if ($lineaHomePanel) {
+                $pywBasePanel = Join-Path ($lineaHomePanel -replace "^home\s*=\s*", "").Trim() "pythonw.exe"
+                if (Test-Path $pywBasePanel) { $panelPywBase = $pywBasePanel }
+            }
+        }
+        try {
+            $shPanel = New-Object -ComObject WScript.Shell
+            $lnkPanel = $shPanel.CreateShortcut($panelLnk)
+            $lnkPanel.TargetPath = $panelPywBase
+            $lnkPanel.Arguments = '"' + (Join-Path $panelDir "panel.py") + '"'
+            $lnkPanel.WorkingDirectory = $panelDir
+            $lnkPanel.Description = "Panel de voz local (lector, idioma y voz)"
+            $lnkPanel.Save()
+            $panelAuto = $true
+            Mostrar-Ok "Autoarranque del panel creado (carpeta Inicio de Windows)"
+        } catch {
+            Mostrar-Fallo ("No se ha podido crear el autoarranque del panel: " + $_.Exception.Message)
+        }
+        if (Test-Path $lectorLnk) {
+            Remove-Item $lectorLnk -Force -ErrorAction SilentlyContinue
+            Mostrar-Ok "Autoarranque del lector retirado (ahora lo gestiona el panel)"
+        }
+    }
+
+    # 7. Arrancar el panel a traves de Explorer: asi corre SIN privilegios de administrador
+    if ($panelAuto) {
+        Start-Process explorer.exe -ArgumentList ('"' + $panelLnk + '"')
+        $panelMarchaAhora = $false
+        for ($i = 0; $i -lt 20 -and -not $panelMarchaAhora; $i++) {
+            Start-Sleep -Seconds 1
+            $panelMarchaAhora = @(Buscar-ProcesosPanel).Count -gt 0
+        }
+        if ($panelMarchaAhora) {
+            Mostrar-Ok "Panel en marcha (Ctrl+Alt+P abre/cierra la ventana)"
+        } else {
+            Mostrar-Aviso ("El panel no parece estar en marcha: mira " + (Join-Path $panelDir "panel.log"))
         }
     }
 }
@@ -734,8 +914,21 @@ if ($SinLector) {
     Mostrar-Dato "Lector de voz" ("modelo verificado: " + $(if ($okModeloLector) { "si" } else { "no" }) + " | autoarranque: " + $(if ($okAutoLector) { "si" } else { "no" })) $colorLector
 }
 
+# Panel de voz
+if ($SinLector) {
+    Mostrar-Dato "Panel de voz" "omitido (-SinLector)"
+} else {
+    $okVozPanel = Test-VozPiper $vozPiperDefecto
+    $okAutoPanel = Test-Path $panelLnk
+    $panelMarchaFin = @(Buscar-ProcesosPanel).Count -gt 0
+    $colorPanel = "Yellow"
+    if ($okVozPanel -and $okAutoPanel) { $colorPanel = "Green" }
+    Mostrar-Dato "Panel de voz" ("panel en marcha: " + $(if ($panelMarchaFin) { "si" } else { "no" }) + " | voz " + $vozPiperDefecto + " instalada: " + $(if ($okVozPanel) { "si" } else { "no" }) + " | autoarranque: " + $(if ($okAutoPanel) { "si" } else { "no" })) $colorPanel
+}
+
 # Conexion
-Mostrar-Dato "Conexion" ("blob.handy.computer " + $(if ($netModelo) { "OK" } else { "sin respuesta" }) + " | ollama.com " + $(if ($netOllama) { "OK" } else { "sin respuesta" }))
+$hfTexto = if ($SinLector) { "no comprobado" } elseif ($netHuggingFace) { "OK" } else { "sin respuesta" }
+Mostrar-Dato "Conexion" ("blob.handy.computer " + $(if ($netModelo) { "OK" } else { "sin respuesta" }) + " | ollama.com " + $(if ($netOllama) { "OK" } else { "sin respuesta" }) + " | huggingface.co " + $hfTexto)
 
 # Configuracion
 if ($Simular) {
@@ -767,9 +960,10 @@ Mostrar-Dato "Avisos" ([string]$avisos)
 Write-Host ""
 Write-Host "Siguientes pasos:" -ForegroundColor Cyan
 Write-Host " 1. Abre Handy (menu Inicio) y elige tu microfono en Ajustes."
-Write-Host " 2. Prueba los tres atajos: Ctrl+Alt+Espacio (dictado), Ctrl+Shift+Espacio (asistente) y Ctrl+Alt+R (lee el portapapeles en voz alta)."
-Write-Host " 3. Para cambiar de modelo de dictado: Handy -> Ajustes -> Modelos."
-Write-Host " 4. El resto (modelo del asistente, prompts, diccionario): seccion Configuracion del README."
+Write-Host " 2. El panel de voz arranca con Windows: Ctrl+Alt+P abre/cierra su ventana (o usa el icono de la bandeja)."
+Write-Host " 3. El lector se ENCIENDE desde el panel (interruptor 'Lector'); al instalar queda apagado."
+Write-Host " 4. Prueba los atajos: Ctrl+Alt+Espacio (dictado), Ctrl+Shift+Espacio (asistente) y Ctrl+Alt+R (lee el portapapeles)."
+Write-Host " 5. Para cambiar de modelo de dictado: Handy -> Ajustes -> Modelos. El resto: seccion Configuracion del README."
 
 # Abrir Handy al terminar (salvo -Simular o -NoAbrir)
 if (-not $Simular -and -not $NoAbrir) {

@@ -1,9 +1,14 @@
 {
     "atajo": "ctrl+alt+r",
-    "voz": "em_alex",
-    "velocidad": 1.0,
     "idioma": "es",
-    "modelo": "kokoro-v1.0.fp16.onnx",
-    "voces": "voices-v1.0.bin",
-    "max_caracteres": 20000
+    "voces": {
+        "es": {"motor": "piper", "voz": "es_ES-davefx-medium"},
+        "en": {"motor": "piper", "voz": "en_US-lessac-high"}
+    },
+    "velocidad": 1.0,
+    "pausa_ms": 250,
+    "leer_seleccion": true,
+    "max_caracteres": 20000,
+    "kokoro": {"modelo": "kokoro-v1.0.fp16.onnx", "voces": "voices-v1.0.bin"},
+    "ingles_xtts": true
 }

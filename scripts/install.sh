@@ -12,7 +12,7 @@
 #   --modelo <modelo>     fuerza el modelo de texto del asistente (p. ej. qwen3:4b-instruct)
 #   --no-abrir            no ofrece abrir Handy al terminar
 #   --metodo <modo>       como instalar Handy: auto | deb | appimage (por defecto: auto)
-#   --sin-lector          no instala el lector de voz (fase 6, Kokoro)
+#   --sin-lector          no instala el lector de voz ni el panel (fases 6 y 7)
 #
 # Requiere Handy CERRADO (icono de bandeja -> Salir).
 
@@ -154,7 +154,12 @@ arrancar_ollama() {
 }
 
 # --- Lector de voz (Kokoro) ---
-LECTOR_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/asistente-voz-local/lector"
+BASE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/asistente-voz-local"
+LECTOR_DIR="$BASE_DIR/lector"
+PANEL_DIR="$BASE_DIR/panel"
+PANEL_CONFIG_DIR="$BASE_DIR/config"
+VOZ_PIPER_DEFECTO="es_ES-davefx-medium"
+VOCES_PIPER_DIR="$LECTOR_DIR/voces/piper"
 LECTOR_URL_BASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1"
 # nombre:bytes:sha256
 LECTOR_ARCHIVOS=(
@@ -175,6 +180,10 @@ buscar_uv() {
 }
 
 lector_en_marcha() { pgrep -f "$LECTOR_DIR/lector.py" >/dev/null 2>&1; }
+panel_en_marcha() { pgrep -f "$PANEL_DIR/panel.py" >/dev/null 2>&1; }
+voz_piper_instalada() { # nombre -> 0 si existen .onnx y .onnx.json
+    [ -f "$VOCES_PIPER_DIR/$1.onnx" ] && [ -f "$VOCES_PIPER_DIR/$1.onnx.json" ]
+}
 
 # =====================================================================
 #  Cabecera
@@ -199,7 +208,7 @@ fi
 #  Preflight
 # =====================================================================
 
-paso "[0/6] Comprobaciones previas"
+paso "[0/7] Comprobaciones previas"
 
 # --- SO de 64 bits y distro ---
 ARQ="$(uname -m)"
@@ -259,6 +268,8 @@ else aviso "No se puede acceder a ollama.com (no se podran descargar los modelos
 if [ "$SIN_LECTOR" -eq 0 ]; then
     if probar_puerto github.com 443; then ok "Conectividad: github.com accesible"
     else aviso "No se puede acceder a github.com (no se podra descargar el modelo del lector de voz)"; fi
+    if [ "$NET_HF" -eq 1 ]; then ok "Conectividad: huggingface.co accesible (voces Piper)"
+    else aviso "No se puede acceder a huggingface.co (no se podra descargar la voz por defecto del panel)"; fi
 fi
 
 # --- Handy NO en ejecucion ---
@@ -312,7 +323,7 @@ fi
 #  Fase 1: Handy
 # =====================================================================
 
-paso "[1/6] Handy (dictado por voz)"
+paso "[1/7] Handy (dictado por voz)"
 HANDY_EXE=""
 if HANDY_EXE=$(handy_ejecutable); then
     HANDY_VER="$(handy_version 2>/dev/null | head -1)"
@@ -342,7 +353,7 @@ fi
 #  Fase 2: Ollama (instalacion + servidor en marcha)
 # =====================================================================
 
-paso "[2/6] Ollama (IA local)"
+paso "[2/7] Ollama (IA local)"
 SERVIDOR_OLLAMA=0
 if [ "$SOLO_DICTADO" -eq 1 ]; then
     ok "Omitido: modo solo dictado (no se instala ni arranca Ollama)"
@@ -390,7 +401,7 @@ fi
 #  Fase 3: Modelos del asistente
 # =====================================================================
 
-paso "[3/6] Modelos del asistente (Ollama)"
+paso "[3/7] Modelos del asistente (Ollama)"
 MODELOS_PRESENTES=""
 if [ "$SOLO_DICTADO" -eq 1 ]; then
     ok "Omitido: modo solo dictado (no se descargan modelos de IA)"
@@ -419,14 +430,14 @@ done
 #  Fase 4: Modelo de dictado (Cohere Transcribe 2B)
 # =====================================================================
 
-paso "[4/6] Modelo de dictado (Cohere Transcribe 2B, ~1,7 GB)"
+paso "[4/7] Modelo de dictado (Cohere Transcribe 2B, ~1,7 GB)"
 descargar_modelo_dictado || true
 
 # =====================================================================
 #  Fase 5: Configuracion de Handy
 # =====================================================================
 
-paso "[5/6] Configuracion de Handy"
+paso "[5/7] Configuracion de Handy"
 
 if handy_en_ejecucion; then
     printf '  %sHandy esta en ejecucion.%s\n' "$C_ROJO" "$C_RESET"
@@ -485,13 +496,13 @@ fi
 #  Fase 6: Lector de voz (Kokoro)
 # =====================================================================
 
-paso "[6/6] Lector de voz (Kokoro, ~0,7 GB entre modelo y entorno Python)"
+paso "[6/7] Lector de voz (Kokoro, ~0,7 GB entre modelo y entorno Python)"
 
 LECTOR_PY="$LECTOR_DIR/.venv/bin/python"
 LECTOR_DESKTOP="$HOME/.config/autostart/lector-voz.desktop"
 
 if [ "$SIN_LECTOR" -eq 1 ]; then
-    ok "Omitido: --sin-lector (no se instala el lector de voz)"
+    ok "Omitido: --sin-lector (no se instala el lector de voz ni el panel)"
 elif [ "$SIMULAR" -eq 1 ]; then
     simula "pararia el lector si esta en marcha y copiaria lector/*.py y requirements.txt a $LECTOR_DIR"
     simula "copiaria config/lector.json solo si no existe ya en $LECTOR_DIR"
@@ -635,6 +646,138 @@ EOF
 fi
 
 # =====================================================================
+#  Fase 7: Panel de voz (Piper + bandeja)
+# =====================================================================
+
+paso "[7/7] Panel de voz (Piper, voz es_ES-davefx-medium ~63 MB)"
+
+PANEL_PY="$LECTOR_DIR/.venv/bin/python"
+PANEL_DESKTOP="$HOME/.config/autostart/panel-voz.desktop"
+ESTADO_JSON="$BASE_DIR/estado.json"
+
+if [ "$SIN_LECTOR" -eq 1 ]; then
+    ok "Omitido: --sin-lector (no se instalan el lector ni el panel de voz)"
+elif [ "$SIMULAR" -eq 1 ]; then
+    simula "pararia el panel si esta en marcha y copiaria panel/*.py a $PANEL_DIR"
+    simula "copiaria config/panel.json a $PANEL_CONFIG_DIR/panel.json"
+    if [ -x "$PANEL_PY" ]; then
+        simula "instalaria en el entorno del lector: piper-tts>=1.8,<2 y pystray>=0.19,<1"
+    else
+        aviso "No existe el entorno Python del lector ($LECTOR_DIR/.venv): la fase 6 debe ejecutarse antes"
+    fi
+    if voz_piper_instalada "$VOZ_PIPER_DEFECTO"; then
+        ok "Voz $VOZ_PIPER_DEFECTO ya instalada"
+    else
+        simula "descargaria la voz $VOZ_PIPER_DEFECTO a $VOCES_PIPER_DIR (huggingface.co)"
+    fi
+    simula "crearia/reemplazaria el autoarranque: $PANEL_DESKTOP"
+    simula "borraria el autoarranque del lector: $LECTOR_DESKTOP"
+    simula "arrancaria el panel en segundo plano"
+else
+    # 1. Parar el panel si esta en marcha
+    if panel_en_marcha; then
+        pkill -f "$PANEL_DIR/panel.py" 2>/dev/null
+        sleep 1
+        ok "Panel en marcha parado (se reiniciara al terminar)"
+    fi
+
+    # 2. Copiar panel/*.py y config/panel.json
+    if mkdir -p "$PANEL_DIR" "$PANEL_CONFIG_DIR" \
+        && cp -f "$REPO_ROOT"/panel/*.py "$PANEL_DIR/" \
+        && cp -f "$REPO_ROOT/config/panel.json" "$PANEL_CONFIG_DIR/panel.json"; then
+        ok "Archivos del panel copiados a $PANEL_DIR"
+    else
+        fallo "No se han podido copiar los archivos del panel a $PANEL_DIR"
+    fi
+
+    # 3. Dependencias en el entorno del lector (piper-tts ya venia en requirements.txt)
+    PANEL_VENV_OK=0
+    if [ ! -x "$PANEL_PY" ]; then
+        fallo "No existe el entorno Python del lector ($LECTOR_DIR/.venv): ejecuta antes la fase 6 y repite"
+    else
+        UV_PANEL=""
+        if ! UV_PANEL=$(buscar_uv); then
+            printf '  Instalando uv...\n'
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            UV_PANEL=$(buscar_uv) || UV_PANEL=""
+        fi
+        if [ -z "$UV_PANEL" ]; then
+            fallo "No se encuentra uv (instalalo con: curl -LsSf https://astral.sh/uv/install.sh | sh) y repite el instalador"
+        else
+            printf '  Instalando dependencias del panel (piper-tts y pystray)...\n'
+            if "$UV_PANEL" pip install -p "$PANEL_PY" "piper-tts>=1.8,<2" "pystray>=0.19,<1"; then
+                ok "Dependencias del panel instaladas en el entorno del lector"
+                PANEL_VENV_OK=1
+            else
+                fallo "No se han podido instalar piper-tts y pystray en el entorno del lector"
+            fi
+        fi
+    fi
+
+    # 4. Voz por defecto: solo si falta el .onnx o el .onnx.json
+    if voz_piper_instalada "$VOZ_PIPER_DEFECTO"; then
+        ok "Voz $VOZ_PIPER_DEFECTO ya instalada"
+    elif [ -x "$PANEL_PY" ]; then
+        mkdir -p "$VOCES_PIPER_DIR"
+        printf '  Descargando la voz %s (huggingface.co)...\n' "$VOZ_PIPER_DEFECTO"
+        if "$PANEL_PY" -m piper.download_voices --download-dir "$VOCES_PIPER_DIR" "$VOZ_PIPER_DEFECTO" \
+            && voz_piper_instalada "$VOZ_PIPER_DEFECTO"; then
+            ok "Voz $VOZ_PIPER_DEFECTO instalada"
+        else
+            aviso "No se ha podido descargar la voz $VOZ_PIPER_DEFECTO (sin conexion a huggingface.co): el panel arrancara igualmente y podras instalarla desde 'Instalar voces...'"
+        fi
+    else
+        aviso "No se ha podido descargar la voz $VOZ_PIPER_DEFECTO: falta el entorno del lector"
+    fi
+
+    # 5. estado.json inicial (plug and play: el lector arranca encendido con la voz basica)
+    if [ ! -f "$ESTADO_JSON" ]; then
+        if mkdir -p "$BASE_DIR" \
+            && printf '{"lector": true, "actualizado": %s}\n' "$(date +%s)" > "$ESTADO_JSON"; then
+            ok "Estado inicial creado (estado.json: lector encendido)"
+        else
+            aviso "No se ha podido crear estado.json"
+        fi
+    else
+        ok "Estado del panel conservado (ya existia estado.json)"
+    fi
+
+    # 6. Autoarranque del panel + retirada del autoarranque del lector
+    if [ "$PANEL_VENV_OK" -eq 1 ]; then
+        if mkdir -p "$HOME/.config/autostart" && cat > "$PANEL_DESKTOP" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Panel de voz
+Comment=Panel de voz local (lector, idioma y voz)
+Exec=$PANEL_PY $PANEL_DIR/panel.py
+Path=$PANEL_DIR
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
+        then
+            ok "Autoarranque del panel creado ($PANEL_DESKTOP)"
+            if [ -f "$LECTOR_DESKTOP" ]; then
+                rm -f "$LECTOR_DESKTOP"
+                ok "Autoarranque del lector retirado (ahora lo gestiona el panel)"
+            fi
+        else
+            fallo "No se ha podido crear el autoarranque del panel"
+        fi
+    fi
+
+    # 7. Arrancarlo en segundo plano (tkinter necesita sesion grafica)
+    if [ "$PANEL_VENV_OK" -eq 1 ] && [ -f "$PANEL_DESKTOP" ]; then
+        nohup setsid "$PANEL_PY" "$PANEL_DIR/panel.py" >/dev/null 2>&1 &
+        sleep 5
+        if panel_en_marcha; then
+            ok "Panel en marcha (Ctrl+Alt+P abre/cierra la ventana)"
+        else
+            aviso "El panel no parece estar en marcha: mira $PANEL_DIR/panel.log"
+        fi
+    fi
+fi
+
+# =====================================================================
 #  Verificacion y resumen final
 # =====================================================================
 
@@ -708,14 +851,28 @@ else
     dato "Lector de voz" "modelo verificado: $LECTOR_MODELO_FIN | autoarranque: $LECTOR_AUTO_FIN"
 fi
 
+# Panel de voz
+if [ "$SIN_LECTOR" -eq 1 ]; then
+    dato "Panel de voz" "omitido (--sin-lector)"
+else
+    PANEL_VOZ_FIN="no"
+    voz_piper_instalada "$VOZ_PIPER_DEFECTO" && PANEL_VOZ_FIN="si"
+    PANEL_AUTO_FIN="no"
+    [ -f "$PANEL_DESKTOP" ] && PANEL_AUTO_FIN="si"
+    PANEL_MARCHA_FIN="no"
+    panel_en_marcha && PANEL_MARCHA_FIN="si"
+    dato "Panel de voz" "panel en marcha: $PANEL_MARCHA_FIN | voz $VOZ_PIPER_DEFECTO instalada: $PANEL_VOZ_FIN | autoarranque: $PANEL_AUTO_FIN"
+fi
+
 dato "Fallos" "$FALLOS"
 dato "Avisos" "$AVISOS"
 
 printf '\n%sSiguientes pasos:%s\n' "$C_CYAN" "$C_RESET"
 printf ' 1. Abre Handy y elige tu microfono en Ajustes.\n'
-printf ' 2. Prueba los tres atajos: Ctrl+Alt+Espacio (dictado), Ctrl+Shift+Espacio (asistente) y Ctrl+Alt+R (lee el portapapeles en voz alta).\n'
-printf ' 3. Para cambiar de modelo de dictado: Handy -> Ajustes -> Modelos.\n'
-printf ' 4. El resto (modelo del asistente, prompts, diccionario): seccion Configuracion del README.\n'
+printf ' 2. El panel de voz arranca con la sesion: Ctrl+Alt+P abre/cierra su ventana (o usa el icono de la bandeja).\n'
+printf ' 3. El lector se ENCIENDE desde el panel (interruptor Lector); al instalar queda apagado.\n'
+printf ' 4. Prueba los atajos: Ctrl+Alt+Espacio (dictado), Ctrl+Shift+Espacio (asistente) y Ctrl+Alt+R (lee el portapapeles).\n'
+printf ' 5. Para cambiar de modelo de dictado: Handy -> Ajustes -> Modelos. El resto: seccion Configuracion del README.\n'
 
 # Abrir Handy al terminar (salvo --simular o --no-abrir)
 if [ "$SIMULAR" -eq 0 ] && [ "$NO_ABRIR" -eq 0 ]; then

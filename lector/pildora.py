@@ -9,18 +9,22 @@ En Windows es una ventana con transparencia real (bordes redondeados suaves).
 En Linux se usa una ventana normal de Tk (esquinas sin transparencia).
 """
 
+import logging
 import math
 import sys
 import time
 import tkinter as tk
+from functools import lru_cache
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 ES_WINDOWS = sys.platform == "win32"
+log = logging.getLogger("lector.pildora")
 
 # Medidas de Handy (RecordingOverlay.css / overlay.rs), en pixeles logicos
 ANCHO, ALTO = 172, 40
+ANCHO_CARGA = 210  # mas ancha cuando lleva texto ("Cargando voz...")
 MARGEN_ABAJO = 15
 BARRAS, BARRA_ANCHO, BARRA_HUECO, BARRA_MIN, BARRA_MAX = 9, 4, 3, 3, 18
 PUNTO = 7
@@ -33,6 +37,7 @@ TEMAS = {
     "claro": {"fondo": (251, 251, 251, 250), "borde": (128, 128, 128, 56),
               "acento": (250, 162, 202), "gris": (110, 110, 110)},
 }
+ROJO = (232, 106, 106)
 
 
 def tema_sistema():
@@ -48,11 +53,45 @@ def tema_sistema():
         return "oscuro"
 
 
-def dibujar(estado, niveles, t, escala, tema):
+def _nivel(valor):
+    """Nivel de barra utilizable: 0..1 y nunca NaN/inf (PIL revienta con NaN)."""
+    try:
+        valor = float(valor)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(valor):
+        return 0.0
+    return min(1.0, max(0.0, valor))
+
+
+@lru_cache(maxsize=8)
+def _fuente(escala):
+    """Fuente del sistema para el texto de la pildora (si no hay, la de PIL)."""
+    tam = max(9, int(round(9 * escala * SUPER)))  # la imagen se dibuja a SUPERx
+    for nombre in ("segoeui.ttf", "DejaVuSans.ttf", "arial.ttf"):
+        try:
+            return ImageFont.truetype(nombre, tam)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def dibujar(estado, niveles, t, escala, tema, texto=""):
     """Devuelve la pildora como imagen RGBA (pixeles fisicos)."""
     c = TEMAS[tema]
     s = escala * SUPER
-    w, h = round(ANCHO * s), round(ALTO * s)
+    fuente = _fuente(escala)
+    # Ancho: el de siempre, o el que pida el texto (estado "cargando")
+    ancho = ANCHO
+    ancho_texto = 0
+    if texto:
+        try:
+            ancho_texto = ImageDraw.Draw(Image.new("RGBA", (1, 1))).textlength(
+                texto, font=fuente) / SUPER
+        except Exception:
+            ancho_texto = len(texto) * 5
+        ancho = max(ANCHO_CARGA, int(70 + ancho_texto + 26))
+    w, h = round(ancho * s), round(ALTO * s)
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     d.rounded_rectangle((0, 0, w - 1, h - 1), radius=h // 2, fill=c["fondo"],
@@ -62,22 +101,41 @@ def dibujar(estado, niveles, t, escala, tema):
     # Punto de estado (izquierda), con el pulso de Handy cuando lee
     px = 10 * s + PUNTO * s / 2 + 2 * s
     r = PUNTO * s / 2
+
+    if texto:
+        # Con texto: aro (cargando) o punto de color + el mensaje; sin barras ni X
+        if estado == "cargando":
+            radio = r + 2 * s
+            inicio = (t * 320) % 360
+            d.arc((px - radio, cy - radio, px + radio, cy + radio), inicio, inicio + 230,
+                  fill=c["gris"] + (235,), width=max(1, round(1.8 * s)))
+            color_texto = c["gris"]
+        else:
+            color = ROJO if estado == "error" else c["gris"]
+            d.ellipse((px - r, cy - r, px + r, cy + r), fill=color + (230,))
+            color_texto = color
+        d.text((px + r + 9 * s, cy), texto, font=fuente,
+               fill=color_texto + (240,), anchor="lm")
+        return img.resize((round(ancho * escala), round(ALTO * escala)), Image.LANCZOS)
+
+    # Punto de estado (izquierda), con el pulso de Handy cuando lee
     if estado == "leyendo":
         fase = (t % 1.9) / 1.9
         if fase < 0.7:
             anillo = r + 7 * s * (fase / 0.7)
             alfa = int(70 * (1 - fase / 0.7))
-            d.ellipse((px - anillo, cy - anillo, px + anillo, cy + anillo), fill=c["acento"] + (alfa,))
+            d.ellipse((px - anillo, cy - anillo, px + anillo, cy + anillo),
+                      fill=c["acento"] + (alfa,))
         d.ellipse((px - r, cy - r, px + r, cy + r), fill=c["acento"] + (255,))
     else:
         d.ellipse((px - r, cy - r, px + r, cy + r), fill=c["gris"] + (115,))
 
     # Barras (centro)
     total = BARRAS * BARRA_ANCHO + (BARRAS - 1) * BARRA_HUECO
-    x0 = (ANCHO - total) / 2 * s - 4 * s
+    x0 = (ancho - total) / 2 * s - 4 * s
     for i in range(BARRAS):
         if estado == "leyendo":
-            alto = BARRA_MIN + niveles[i] * (BARRA_MAX - BARRA_MIN)
+            alto = BARRA_MIN + _nivel(niveles[i]) * (BARRA_MAX - BARRA_MIN)
             color = c["acento"] + (255,)
         elif estado == "aviso":  # no habia texto: barras grises quietas
             alto, color = BARRA_MIN, c["gris"] + (110,)
@@ -232,6 +290,8 @@ class Pildora:
         self.alfa = 0.0
         self.ultimo = "preparando"
         self.t0 = time.monotonic()
+        self.cerrando = False
+        self.ultimo_error = 0.0
 
     def _escala(self):
         if ES_WINDOWS:
@@ -255,8 +315,37 @@ class Pildora:
             self.lector.alternar()  # leyendo -> para
 
     def _tick(self):
+        """Refresco periodico. Si un fotograma falla, el bucle sigue: nunca se congela
+        en pantalla (un error suelto dejaba la pildora clavada, sin desaparecer)."""
+        if self.cerrando:
+            self.raiz.destroy()
+            return
+        try:
+            self._pintar()
+        except Exception:
+            ahora = time.monotonic()
+            if ahora - self.ultimo_error > 5:  # no llenar el log 30 veces por segundo
+                self.ultimo_error = ahora
+                log.exception("Error dibujando la pildora: se oculta hasta el proximo aviso")
+            self.alfa = 0.0
+            try:
+                self.capa.ocultar()
+            except Exception:
+                pass
+        self.raiz.after(33, self._tick)
+
+    def _pintar(self):
         estado = self.lector.estado
-        objetivo = 0.0 if estado == "inactivo" else 1.0
+        ahora = time.monotonic()
+        if estado == "inactivo":
+            if getattr(self.lector, "error_hasta", 0.0) > ahora:
+                estado = "error"
+            elif getattr(self.lector, "aviso_hasta", 0.0) > ahora:
+                estado = "aviso"
+        visible = estado != "inactivo"
+        if estado == "cargando" and not getattr(self.lector, "cargando_visible", False):
+            visible = False  # carga inicial en segundo plano: no molestar
+        objetivo = 1.0 if visible else 0.0
         # Aparece y desaparece en ~200 ms, como Handy
         self.alfa += max(-0.17, min(0.17, objetivo - self.alfa))
         if self.alfa <= 0.01:
@@ -265,20 +354,34 @@ class Pildora:
         else:
             if not self.capa.visible:
                 self.tema = tema_sistema()  # por si cambio claro/oscuro
-            nuevos = self.lector.niveles
-            self.niveles = [p * 0.7 + n * 0.3 for p, n in zip(self.niveles, nuevos)]
+            self._suavizar(estado)
             escala = self._escala()
-            if estado != "inactivo":
+            if visible:
                 self.ultimo = estado  # al desvanecerse se mantiene el ultimo dibujo
+            texto = ""
+            if self.ultimo == "cargando" and estado in ("cargando", "inactivo"):
+                desde = getattr(self.lector, "cargando_desde", None)
+                segundos = int(time.monotonic() - desde) if desde else 0
+                texto = f"Cargando voz… {segundos} s" if segundos >= 1 else "Cargando voz…"
+            elif self.ultimo == "error" and estado in ("error", "inactivo"):
+                texto = getattr(self.lector, "error_texto", "") or "No se pudo cargar la voz"
+            elif self.ultimo == "aviso" and estado in ("aviso", "inactivo"):
+                texto = getattr(self.lector, "aviso_texto", "") or "Nada que leer"
             img = dibujar(self.ultimo, self.niveles,
-                          time.monotonic() - self.t0, escala, self.tema)
+                          time.monotonic() - self.t0, escala, self.tema, texto)
             x, y = self._posicion(img.size[0], img.size[1], escala)
             self.capa.mostrar(img, x, y, int(255 * self.alfa))
-        self.raiz.after(33, self._tick)
+
+    def _suavizar(self, estado):
+        """Niveles de las barras con memoria (0,7 + 0,3) y saneados: siempre 9 valores 0..1."""
+        nuevos = list(self.lector.niveles)[:BARRAS] if estado != "inactivo" else []
+        nuevos += [0.0] * (BARRAS - len(nuevos))
+        self.niveles = [p * 0.7 + _nivel(n) * 0.3 for p, n in zip(self.niveles, nuevos)]
 
     def ejecutar(self):
         self.raiz.after(33, self._tick)
         self.raiz.mainloop()
 
     def cerrar(self):
-        self.raiz.after(0, self.raiz.destroy)
+        """Se puede llamar desde otro hilo (el del atajo): Tk se toca solo desde su bucle."""
+        self.cerrando = True

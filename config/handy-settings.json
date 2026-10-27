@@ -7,7 +7,7 @@
     "audio_feedback_volume": 1.0,
     "auto_submit": false,
     "auto_submit_key": "enter",
-    "autostart_enabled": false,
+    "autostart_enabled": true,
     "bindings": {
       "cancel": {
         "current_binding": "escape",
@@ -178,7 +178,7 @@
     "show_tray_icon": true,
     "show_whats_new_on_update": true,
     "sound_theme": "marimba",
-    "start_hidden": false,
+    "start_hidden": true,
     "theme": "system",
     "transcribe_accelerator": "auto",
     "transcribe_gpu_device": null,
