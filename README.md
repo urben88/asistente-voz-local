@@ -6,9 +6,9 @@ Hablas y tu PC escribe, resume o te lee el texto en voz alta. **100% local**: na
 
 ## Míralo en 40 segundos
 
-[![Vídeo: dictar, resumir con IA y leer en voz alta. Clic para verlo con sonido](docs/media/demo-asistente-voz.gif)](docs/media/demo-asistente-voz.mp4)
+https://github.com/user-attachments/assets/08749ab9-f51f-4cf2-a3bb-0c554fefeab9
 
-▶️ **[Ver el vídeo con sonido y subtítulos](docs/media/demo-asistente-voz.mp4)** (recreación del uso real).
+Recreación del uso real, con sonido y subtítulos. ¿No se reproduce? [Abre el MP4](docs/media/demo-asistente-voz.mp4) o mira el [GIF](docs/media/demo-asistente-voz.gif).
 
 ## Instalar
 
