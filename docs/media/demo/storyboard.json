@@ -1,0 +1,74 @@
+{
+  "_nota": "Fuente unica de la demo: narracion (audio), subtitulo en pantalla y duracion minima de cada escena. Editar aqui y volver a ejecutar render-demo.mjs; el HTML y el SRT se generan a partir de este fichero.",
+  "fps": 25,
+  "narrador": {
+    "motor": "xtts",
+    "voz": "Luis Moray",
+    "idioma": "es",
+    "velocidad": 1.0,
+    "recambio_piper": "es_ES-davefx-medium"
+  },
+  "gif": {
+    "desde": 1,
+    "offset_desde": 0.45,
+    "hasta": 6,
+    "fps": 10,
+    "ancho": 800
+  },
+  "escenas": [
+    {
+      "id": "intro",
+      "min": 3.2,
+      "narracion": "Dicta, resume y escucha. Todo en tu PC.",
+      "subtitulo": "Dicta, resume y escucha: todo en tu PC, sin nube."
+    },
+    {
+      "id": "dictado-atajo",
+      "min": 3.6,
+      "narracion": "Pulsa Control más Alt más Espacio y habla con naturalidad.",
+      "subtitulo": "Pulsa Ctrl + Alt + Espacio y habla."
+    },
+    {
+      "id": "dictado-escucha",
+      "min": 3.0,
+      "narracion": "La píldora te avisa de que está escuchando.",
+      "subtitulo": "La píldora avisa: te está escuchando."
+    },
+    {
+      "id": "dictado-texto",
+      "min": 4.0,
+      "narracion": "Al parar, Whisper transcribe y pega el texto en el cursor.",
+      "subtitulo": "Al parar, Whisper transcribe y lo pega en el cursor."
+    },
+    {
+      "id": "asistente-atajo",
+      "min": 4.6,
+      "narracion": "Con Control más Shift más Espacio, el asistente local resume o redacta.",
+      "subtitulo": "Ctrl + Shift + Espacio: el asistente local resume o redacta."
+    },
+    {
+      "id": "asistente-texto",
+      "min": 4.2,
+      "narracion": "El resultado se pega solo y queda copiado en el portapapeles.",
+      "subtitulo": "El resultado se pega solo y queda en el portapapeles."
+    },
+    {
+      "id": "lector",
+      "min": 4.2,
+      "narracion": "Y con Control más Alt más R, escucha el texto que selecciones.",
+      "subtitulo": "Ctrl + Alt + R lee en voz alta el texto seleccionado."
+    },
+    {
+      "id": "panel",
+      "min": 4.0,
+      "narracion": "Control más Alt más P abre el panel: idioma, motor y voz.",
+      "subtitulo": "Ctrl + Alt + P abre el panel de voz."
+    },
+    {
+      "id": "cierre",
+      "min": 3.8,
+      "narracion": "Instalación en un clic, y nada sale de tu PC.",
+      "subtitulo": "Instalación en 1 clic. Nada sale de tu PC."
+    }
+  ]
+}

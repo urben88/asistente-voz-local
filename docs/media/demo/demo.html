@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Demo — Asistente de voz local</title>
+<style>
+  :root{
+    --ink:#eef2ff; --muted:#94a3c4; --line:rgba(255,255,255,.10);
+    --card:#161e33; --card2:#1c2643;
+    --pink:#ff6fa5; --amber:#ffb86b; --blue:#8aa4ff; --green:#5ee0b0;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:960px;height:540px;overflow:hidden;background:#0a0e18}
+  body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:960px;height:540px;overflow:hidden;
+    background:
+      radial-gradient(900px 520px at 12% -12%, #1e2b4e 0%, rgba(30,43,78,0) 62%),
+      radial-gradient(760px 520px at 92% 112%, #33203a 0%, rgba(51,32,58,0) 58%),
+      linear-gradient(158deg,#0a0f1d 0%,#101728 55%,#141a2c 100%);}
+
+  /* ---------- intro ---------- */
+  #intro{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center}
+  #intro .kicker{font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  #intro h1{font-size:46px;font-weight:650;letter-spacing:-.5px;line-height:1.1}
+  #intro h1 em{font-style:normal;color:var(--pink)}
+  #intro p{font-size:19px;color:#c3cee6;max-width:640px}
+  .chips{display:flex;gap:10px;margin-top:6px}
+  .chips span{font-size:13.5px;color:#cfd9ee;border:1px solid var(--line);background:rgba(255,255,255,.045);
+    padding:7px 14px;border-radius:999px}
+
+  /* ---------- escritorio ---------- */
+  #desk{position:absolute;inset:0}
+  #hud{position:absolute;top:14px;left:0;right:0;display:flex;justify-content:center;gap:9px}
+  .chip{display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:10px;
+    border:1px solid var(--line);background:rgba(255,255,255,.035);opacity:.5}
+  .chip .key{font:600 11.5px/1 "Consolas",monospace;color:#dbe4ff;background:rgba(255,255,255,.09);
+    border:1px solid rgba(255,255,255,.10);border-radius:6px;padding:5px 7px}
+  .chip .lab{font-size:11.5px;color:var(--muted);margin-left:5px;letter-spacing:.02em}
+  .chip.on{opacity:1;border-color:rgba(255,111,165,.55);background:rgba(255,111,165,.13);
+    box-shadow:0 0 0 1px rgba(255,111,165,.20), 0 6px 22px -12px rgba(255,111,165,.8)}
+  .chip.on .lab{color:#ffd3e2}
+  .chip.on .key{background:rgba(255,111,165,.22);border-color:rgba(255,111,165,.45)}
+  .chip .key.down{transform:translateY(1px);background:rgba(255,255,255,.22)}
+
+  #win{position:absolute;left:60px;top:62px;width:840px;height:372px;border-radius:14px;
+    border:1px solid var(--line);background:linear-gradient(180deg,#161e33,#131a2c);
+    box-shadow:0 30px 70px -40px #000, inset 0 1px 0 rgba(255,255,255,.05);overflow:hidden}
+  .wbar{height:38px;display:flex;align-items:center;gap:7px;padding:0 14px;
+    border-bottom:1px solid var(--line);background:rgba(255,255,255,.025)}
+  .wbar i{width:10px;height:10px;border-radius:50%;background:#2f3a56}
+  .wbar i:nth-child(1){background:#ff6f6f66}
+  .wbar i:nth-child(2){background:#ffb86b66}
+  .wbar i:nth-child(3){background:#5ee0b066}
+  .wbar .wt{margin-left:10px;font-size:12.5px;color:var(--muted)}
+
+  #doc{position:absolute;left:34px;right:34px;top:58px;bottom:66px;font-size:18px;line-height:1.62;
+    white-space:pre-wrap;overflow:hidden;color:#e7edfc}
+  #doc .ph{color:#5c6b8f}
+  #doc .caret{display:inline-block;width:2px;height:19px;margin-bottom:-4px;background:var(--pink);border-radius:1px}
+  #doc .sel{background:rgba(138,164,255,.30);border-radius:2px}
+  #doc .sum{color:#eaf1ff}
+
+  #pill{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);
+    display:flex;align-items:center;gap:9px;padding:8px 15px;border-radius:999px;
+    border:1px solid rgba(255,255,255,.13);background:rgba(11,16,30,.90);
+    box-shadow:0 14px 34px -20px #000;white-space:nowrap}
+  #pill .pdot{width:9px;height:9px;border-radius:50%;background:#5b6b8c}
+  #pill .ptxt{font-size:13.5px;color:#dae3f6;letter-spacing:.01em}
+  #pill .pbars{display:flex;align-items:flex-end;gap:3px;height:16px}
+  #pill .pbars i{width:3px;border-radius:2px;background:var(--pink);height:4px}
+  #pill.rec .pdot{background:var(--pink);box-shadow:0 0 0 4px rgba(255,111,165,.18)}
+  #pill.rec .ptxt{color:#ffd6e5}
+  #pill.busy .pdot{background:var(--amber);box-shadow:0 0 0 4px rgba(255,184,107,.16)}
+  #pill.busy .ptxt{color:#ffe3c2}
+  #pill.ok .pdot{background:var(--green);box-shadow:0 0 0 4px rgba(94,224,176,.14)}
+
+  /* ---------- panel ---------- */
+  #panel{position:absolute;left:190px;top:96px;width:580px;height:344px;border-radius:16px;
+    border:1px solid rgba(255,255,255,.13);background:linear-gradient(180deg,#1a2340,#151c31);
+    box-shadow:0 40px 90px -40px #000, inset 0 1px 0 rgba(255,255,255,.06);overflow:hidden}
+  #panel .pbar{height:44px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 18px;border-bottom:1px solid var(--line);font-size:14.5px;font-weight:600;letter-spacing:.01em}
+  #panel .pbar .x{color:var(--muted);font-size:17px}
+  #panel .tabs{display:flex;gap:6px;padding:12px 16px 0}
+  #panel .tab{font-size:12.5px;color:var(--muted);padding:7px 13px;border-radius:9px 9px 0 0;
+    border:1px solid transparent;border-bottom:none}
+  #panel .tab.on{color:#fff;background:rgba(255,255,255,.06);border-color:var(--line)}
+  #panel .rows{padding:14px 22px;display:flex;flex-direction:column;gap:13px}
+  #panel .row{display:flex;align-items:center;justify-content:space-between;font-size:15px}
+  #panel .row .k{color:var(--muted);font-size:13.5px}
+  #panel .row .v{color:#e9eefc}
+  #panel .row .v .star{color:var(--pink);margin-left:5px}
+  #panel .badge{display:flex;align-items:center;gap:7px;font-size:13px;color:#d6f7ea;
+    background:rgba(94,224,176,.13);border:1px solid rgba(94,224,176,.35);padding:5px 11px;border-radius:999px}
+  #panel .badge i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+  #panel .pfoot{margin:6px 22px 0;font-size:12.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+
+  /* ---------- cierre ---------- */
+  #end{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+  #end .etitle{font-size:38px;font-weight:650;letter-spacing:-.4px}
+  #end .elinks{display:flex;gap:14px;margin-top:4px}
+  #end .elink{display:flex;flex-direction:column;gap:8px;align-items:flex-start;
+    border:1px solid var(--line);background:rgba(255,255,255,.04);border-radius:12px;padding:14px 18px}
+  #end .elink .os{font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  #end .elink code{font:600 17px/1 "Consolas",monospace;color:#fff}
+  #end .enote{font-size:15px;color:#c3cee6;margin-top:2px}
+  #end .efoot{font-size:13.5px;color:var(--muted);margin-top:8px}
+
+  /* ---------- subtítulos ---------- */
+  #caption{position:absolute;left:0;right:0;bottom:16px;display:flex;justify-content:center;padding:0 40px}
+  #caption span{max-width:860px;font-size:17.5px;line-height:1.35;color:#e8eefe;text-align:center;
+    background:rgba(5,9,18,.74);border:1px solid rgba(255,255,255,.09);border-radius:11px;
+    padding:9px 18px;box-shadow:0 12px 30px -22px #000}
+  #veil{position:absolute;inset:0;background:#060a14;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="stage">
+  <section id="intro">
+    <div class="kicker">asistente-voz-local</div>
+    <h1>Habla y escribe.<br><em>Sin salir de tu PC.</em></h1>
+    <p>Dictado, resúmenes y lectura en voz alta con modelos que corren en tu máquina.</p>
+    <div class="chips"><span>Windows</span><span>Linux</span><span>100 % local</span><span>GPU opcional</span></div>
+  </section>
+
+  <section id="desk">
+    <div id="hud">
+      <div class="chip" data-k="dictado"><span class="key">Ctrl</span><span class="key">Alt</span><span class="key">Espacio</span><span class="lab">Dictado</span></div>
+      <div class="chip" data-k="asistente"><span class="key">Ctrl</span><span class="key">Shift</span><span class="key">Espacio</span><span class="lab">Asistente</span></div>
+      <div class="chip" data-k="leer"><span class="key">Ctrl</span><span class="key">Alt</span><span class="key">R</span><span class="lab">Leer</span></div>
+      <div class="chip" data-k="panel"><span class="key">Ctrl</span><span class="key">Alt</span><span class="key">P</span><span class="lab">Panel</span></div>
+    </div>
+    <div id="win">
+      <div class="wbar"><i></i><i></i><i></i><span class="wt">notas.txt</span></div>
+      <div id="doc"></div>
+      <div id="pill"><span class="pdot"></span><span class="ptxt">Todo listo</span><span class="pbars"></span></div>
+    </div>
+  </section>
+
+  <section id="panel">
+    <div class="pbar"><span>Panel de voz</span><span class="x">×</span></div>
+    <div class="tabs"><span class="tab on">Lector</span><span class="tab">Dictado</span><span class="tab">Asistente IA</span></div>
+    <div class="rows">
+      <div class="row"><span class="k">Lector</span><span class="badge"><i></i>Encendido</span></div>
+      <div class="row"><span class="k">Idioma</span><span class="v">Español</span></div>
+      <div class="row"><span class="k">Motor</span><span class="v">Supertonic<span class="star">★</span></span></div>
+      <div class="row"><span class="k">Voz</span><span class="v">F1</span></div>
+    </div>
+    <div class="pfoot">CPU · 0 de VRAM · el dictado sigue usando la GPU</div>
+  </section>
+
+  <section id="end">
+    <div class="etitle">Instalación en 1 clic</div>
+    <div class="elinks">
+      <div class="elink"><span class="os">Windows</span><code>Instalar.cmd</code></div>
+      <div class="elink"><span class="os">Linux</span><code>./Instalar.sh</code></div>
+    </div>
+    <div class="enote">Modelos, atajos y voces se configuran solos</div>
+    <div class="efoot">Todo se queda en tu PC</div>
+  </section>
+
+  <div id="caption"><span id="capText"></span></div>
+  <div id="veil"></div>
+</div>
+
+<script>
+/* ------------------------------------------------------------------
+   Demo determinista: renderAt(t) pinta el estado exacto del instante t.
+   No usa animaciones CSS ni reloj del sistema, para que cada fotograma
+   se pueda repetir igual (ver render-demo.mjs).
+   ------------------------------------------------------------------ */
+
+const DICT = "Reunión de ayer: la línea 3 estuvo parada, el repuesto llega el jueves 18 y el coste es de 2400 euros.";
+const SUM = ["Resumen", "\u2022 Línea 3 parada; repuesto el jueves 18.", "\u2022 Coste: 2.400 \u20AC.", "\u2022 Pendiente: avisar al proveedor."];
+const SUM_TXT = SUM.join("\n");
+
+const el = {
+  intro: document.getElementById('intro'),
+  desk: document.getElementById('desk'),
+  win: document.getElementById('win'),
+  hud: Array.from(document.querySelectorAll('#hud .chip')),
+  doc: document.getElementById('doc'),
+  pill: document.getElementById('pill'),
+  pillTxt: document.querySelector('#pill .ptxt'),
+  pillBars: document.querySelector('#pill .pbars'),
+  panel: document.getElementById('panel'),
+  end: document.getElementById('end'),
+  cap: document.getElementById('capText'),
+  veil: document.getElementById('veil'),
+};
+
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const fade = (t, a, b) => (b <= a ? (t >= b ? 1 : 0) : clamp((t - a) / (b - a)));
+const smooth = x => x * x * (3 - 2 * x);
+
+/* Nueve límites de escena: a[0]=0 … a[9]=fin */
+const A0 = [0, 3.2, 6.8, 9.8, 13.8, 18.4, 22.6, 26.8, 30.8, 34.6];
+
+function deriveTimeline(a) {
+  return {
+    a,
+    press1:    a[1] + 0.30,
+    listen1:   a[1] + 0.80,
+    transcribe:a[3],
+    type1Start:a[3] + 0.90,
+    type1End:  a[4] - 0.35,
+    press2:    a[4] + 0.30,
+    listen2:   a[4] + 0.80,
+    think:     a[5],
+    type2Start:a[5] + 0.60,
+    type2End:  a[6] - 0.35,
+    select:    a[6] + 0.25,
+    read:      a[6] + 0.95,
+    readEnd:   a[7] - 0.20,
+    panelIn:   a[7] + 0.20,
+    panelOut:  a[8] - 0.10,
+    endIn:     a[8] + 0.15,
+    total:     a[9],
+  };
+}
+
+const state = {
+  a: A0,
+  d: deriveTimeline(A0),
+  caps: [
+    [0, 3.2, "Dicta, resume y escucha: todo en tu PC, sin nube."],
+    [3.2, 6.8, "Pulsa Ctrl + Alt + Espacio y habla."],
+    [6.8, 9.8, "La píldora avisa: te está escuchando."],
+    [9.8, 13.8, "Al parar, Whisper transcribe y lo pega en el cursor."],
+    [13.8, 18.4, "Ctrl + Shift + Espacio: el asistente local resume o redacta."],
+    [18.4, 22.6, "El resultado se pega solo y queda en el portapapeles."],
+    [22.6, 26.8, "Ctrl + Alt + R lee en voz alta el texto seleccionado."],
+    [26.8, 30.8, "Ctrl + Alt + P abre el panel de voz."],
+    [30.8, 34.6, "Instalación en 1 clic. Nada sale de tu PC."],
+  ],
+};
+
+window.configure = function (cfg) {
+  if (cfg && Array.isArray(cfg.a) && cfg.a.length === 10) {
+    state.a = cfg.a;
+    state.d = deriveTimeline(cfg.a);
+  }
+  if (cfg && Array.isArray(cfg.caps)) state.caps = cfg.caps;
+  if (typeof cfg.fps === 'number') state.fps = cfg.fps;
+};
+
+/* ---------- piezas ---------- */
+
+function buildDoc(t) {
+  const D = state.d, A = state.a;
+  el.doc.textContent = '';
+
+  const phOp = 1 - smooth(fade(t, A[3] - 0.10, A[3] + 0.35));
+  if (phOp > 0.02) {
+    const ph = document.createElement('span');
+    ph.className = 'ph';
+    ph.style.opacity = phOp.toFixed(3);
+    ph.textContent = "El texto aparece aquí en cuanto dejas de hablar…";
+    el.doc.appendChild(ph);
+  }
+
+  const t1 = clamp((t - D.type1Start) / (D.type1End - D.type1Start));
+  const n1 = t1 <= 0 ? 0 : Math.floor(DICT.length * smooth(t1));
+  const typing1 = t > D.type1Start - 0.05 && t < D.type1End;
+
+  const s1 = document.createElement('span');
+  s1.textContent = DICT.slice(0, n1);
+  el.doc.appendChild(s1);
+
+  if (n1 > 0 || t >= D.type1Start) {
+    const caret = document.createElement('span');
+    caret.className = 'caret';
+    if (n1 >= DICT.length) caret.style.opacity = (Math.sin(t * 8) > -0.2 ? 1 : 0.1).toFixed(2);
+    el.doc.appendChild(caret);
+  }
+
+  if (t >= D.type2Start - 0.05) {
+    const t2 = clamp((t - D.type2Start) / (D.type2End - D.type2Start));
+    const n2 = t2 <= 0 ? 0 : Math.floor(SUM_TXT.length * smooth(t2));
+    el.doc.appendChild(document.createTextNode("\n\n"));
+
+    const sum = document.createElement('span');
+    sum.className = 'sum';
+    sum.textContent = SUM_TXT.slice(0, n2);
+    if (t >= D.select) { sum.className = 'sum sel'; }
+    el.doc.appendChild(sum);
+
+    if (n2 < SUM_TXT.length) {
+      const caret = document.createElement('span');
+      caret.className = 'caret';
+      el.doc.appendChild(caret);
+    }
+  }
+}
+
+function buildPill(t) {
+  const D = state.d, A = state.a;
+  let mode = 'idle', txt = 'Todo listo';
+
+  if (t >= D.read && t < D.readEnd) { mode = 'rec'; txt = 'Leyendo…'; }
+  else if (t >= D.listen1 && t < A[3]) { mode = 'rec'; txt = 'Escuchando…'; }
+  else if (t >= A[3] && t < D.type1End) { mode = 'busy'; txt = 'Transcribiendo…'; }
+  else if (t >= D.listen2 && t < A[5]) { mode = 'rec'; txt = 'Escuchando…'; }
+  else if (t >= A[5] && t < D.type2Start) { mode = 'busy'; txt = 'Pensando…'; }
+  else if (t >= D.type2Start && t < D.type2End) { mode = 'busy'; txt = 'Redactando…'; }
+  else if (t >= D.readEnd) { mode = 'ok'; txt = 'Lectura terminada'; }
+  else if (t >= D.type2End) { mode = 'ok'; txt = 'Listo · copiado'; }
+  else if (t >= D.type1End) { mode = 'ok'; txt = 'Pegado en el cursor'; }
+
+  el.pill.className = mode === 'idle' ? '' : mode;
+  el.pillTxt.textContent = txt;
+
+  const withBars = mode === 'rec';
+  el.pillBars.textContent = '';
+  el.pillBars.style.display = withBars ? 'flex' : 'none';
+  if (withBars) {
+    for (let i = 0; i < 9; i++) {
+      const b = document.createElement('i');
+      const amp = 4 + 11 * Math.abs(Math.sin(t * 5.5 + i * 0.85));
+      const breather = 0.55 + 0.45 * Math.abs(Math.sin(t * 0.9));
+      b.style.height = (amp * breather + 3).toFixed(1) + 'px';
+      b.style.opacity = (0.55 + 0.45 * breather).toFixed(2);
+      el.pillBars.appendChild(b);
+    }
+  }
+}
+
+function renderAt(t) {
+  const D = state.d, A = state.a;
+
+  /* intro */
+  const introIn = smooth(fade(t, 0, 0.55));
+  const introOut = 1 - smooth(fade(t, A[1] - 0.55, A[1]));
+  el.intro.style.opacity = (introIn * introOut).toFixed(3);
+  el.intro.style.transform = 'translateY(' + ((1 - introIn) * -14).toFixed(1) + 'px)';
+
+  /* escritorio */
+  const deskIn = smooth(fade(t, A[1] - 0.20, A[1] + 0.55));
+  const deskOut = 1 - smooth(fade(t, D.panelOut, A[8] + 0.35));
+  const deskOp = deskIn * deskOut;
+  el.desk.style.opacity = deskOp.toFixed(3);
+  el.desk.style.transform = 'scale(' + (0.985 + 0.015 * deskIn).toFixed(4) + ')';
+
+  /* panel de voz */
+  const panelIn = smooth(fade(t, D.panelIn, D.panelIn + 0.45));
+  const panelOut = 1 - smooth(fade(t, D.panelOut, A[8] + 0.30));
+  const panelOp = panelIn * panelOut;
+  el.panel.style.opacity = panelOp.toFixed(3);
+  el.panel.style.transform = 'translateY(' + ((1 - panelIn) * 26).toFixed(1) + 'px)';
+  el.win.style.filter = panelOp > 0.05 ? 'brightness(' + (1 - 0.35 * panelOp).toFixed(2) + ')' : 'none';
+
+  /* atajos activos */
+  const act =
+    (t >= A[1] && t < A[4]) ? 'dictado' :
+    (t >= A[4] && t < A[6]) ? 'asistente' :
+    (t >= A[6] && t < A[7]) ? 'leer' :
+    (t >= A[7] && t < A[8]) ? 'panel' : null;
+  el.hud.forEach(c => {
+    const on = c.dataset.k === act;
+    c.classList.toggle('on', on);
+    const held = on && (
+      (c.dataset.k === 'dictado' && t < A[3]) ||
+      (c.dataset.k === 'asistente' && t < A[5]) ||
+      (c.dataset.k === 'leer' && t < D.readEnd) ||
+      (c.dataset.k === 'panel' && t < A[7] + 0.6));
+    c.querySelectorAll('.key').forEach(k => k.classList.toggle('down', !!held));
+  });
+
+  if (deskOp > 0.01) {
+    buildDoc(t);
+    buildPill(t);
+  }
+
+  /* cierre */
+  const endOp = smooth(fade(t, D.endIn, D.endIn + 0.6));
+  el.end.style.opacity = endOp.toFixed(3);
+  el.end.style.transform = 'translateY(' + ((1 - endOp) * 16).toFixed(1) + 'px)';
+
+  /* subtítulo */
+  let cap = '';
+  for (const c of state.caps) { if (t >= c[0] && t < c[1]) { cap = c[2]; break; } }
+  if (el.cap.textContent !== cap) el.cap.textContent = cap;
+
+  /* fundido final */
+  el.veil.style.opacity = smooth(fade(t, D.total - 0.55, D.total - 0.05)).toFixed(3);
+}
+
+window.renderAt = renderAt;
+window.totalDuration = () => state.d.total;
+window.captions = () => state.caps;
+
+renderAt(0);
+const qs = new URLSearchParams(location.search);
+if (qs.has('play')) {
+  const t0 = performance.now();
+  const loop = () => { renderAt(((performance.now() - t0) / 1000) % state.d.total); requestAnimationFrame(loop); };
+  loop();
+} else if (qs.has('t')) {
+  // vista previa de un instante exacto: demo.html?t=17.5
+  renderAt(Number.parseFloat(qs.get('t')) || 0);
+}
+</script>
+</body>
+</html>

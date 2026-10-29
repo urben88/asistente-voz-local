@@ -1,0 +1,35 @@
+1
+00:00:00,000 --> 00:00:03,860
+Dicta, resume y escucha: todo en tu PC, sin nube.
+
+2
+00:00:03,860 --> 00:00:08,518
+Pulsa Ctrl + Alt + Espacio y habla.
+
+3
+00:00:08,518 --> 00:00:11,518
+La píldora avisa: te está escuchando.
+
+4
+00:00:11,518 --> 00:00:16,196
+Al parar, Whisper transcribe y lo pega en el cursor.
+
+5
+00:00:16,196 --> 00:00:22,054
+Ctrl + Shift + Espacio: el asistente local resume o redacta.
+
+6
+00:00:22,054 --> 00:00:26,461
+El resultado se pega solo y queda en el portapapeles.
+
+7
+00:00:26,461 --> 00:00:31,034
+Ctrl + Alt + R lee en voz alta el texto seleccionado.
+
+8
+00:00:31,034 --> 00:00:36,959
+Ctrl + Alt + P abre el panel de voz.
+
+9
+00:00:36,959 --> 00:00:41,170
+Instalación en 1 clic. Nada sale de tu PC.
